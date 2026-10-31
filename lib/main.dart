@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -46,6 +48,7 @@ class _GustaroAppState extends State<GustaroApp> {
         _services = services;
         _accepted = accepted == AppServices.legalVersion;
       });
+      unawaited(services.syncCatalog());
     } catch (error, stack) {
       FlutterError.reportError(
         FlutterErrorDetails(exception: error, stack: stack),

@@ -591,9 +591,7 @@ class _Field extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text.rich(
-            TextSpan(
-              text: optional ? label : '$label *',
-            ),
+            TextSpan(text: optional ? label : '$label *'),
             style: GText.label,
           ),
           const SizedBox(height: 6),

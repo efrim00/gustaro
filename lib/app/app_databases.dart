@@ -34,11 +34,63 @@ final class AppDatabases {
     await dir.create(recursive: true);
 
     final catalogFile = File('${dir.path}/catalog.sqlite');
-    final bytes = await rootBundle.load(_catalogAsset);
-    await catalogFile.writeAsBytes(
-      bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-      flush: true,
+    final catalog = await _openCatalog(catalogFile);
+
+    final myBottles = CatalogDatabase(
+      NativeDatabase(File('${dir.path}/my_bottles.sqlite')),
     );
+    final user = UserDatabase(NativeDatabase(File('${dir.path}/user.sqlite')));
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    final photos = PhotoStore(
+      directory: Directory('${dir.path}/bottle_photos'),
+      cloudDirectory: Directory('${dir.path}/cloud_photos'),
+      bundled: manifest
+          .listAssets()
+          .where((a) => a.startsWith('assets/photos/'))
+          .toSet(),
+    );
+    return AppDatabases._(catalog, myBottles, user, photos);
+  }
+
+  /// The catalogue on the phone is kept between launches, because it may
+  /// have been brought up to date from the server. The one shipped in the
+  /// app replaces it only when the app's is newer (a new app version).
+  /// Throws if the catalogue has another schema version than the app knows:
+  /// better to fail than to show wrong data.
+  static Future<CatalogDatabase> _openCatalog(File catalogFile) async {
+    final data = await rootBundle.load(_catalogAsset);
+    final bundled = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
+
+    int? localVersion;
+    if (catalogFile.existsSync()) {
+      final local = CatalogDatabase(NativeDatabase(catalogFile));
+      try {
+        final meta = await CatalogRepository(local).meta();
+        if (meta?.schemaVersion == CatalogDatabase.currentSchemaVersion) {
+          localVersion = meta?.dataVersion;
+        }
+      } on Object {
+        localVersion = null;
+      }
+      await local.close();
+    }
+
+    final probe = File('${catalogFile.path}.bundled');
+    await probe.writeAsBytes(bundled, flush: true);
+    final bundledDb = CatalogDatabase(NativeDatabase(probe));
+    final bundledMeta = await CatalogRepository(bundledDb).meta();
+    await bundledDb.close();
+    await probe.delete();
+
+    if (shouldInstallBundled(
+      localVersion: localVersion,
+      bundledVersion: bundledMeta?.dataVersion ?? 0,
+    )) {
+      await catalogFile.writeAsBytes(bundled, flush: true);
+    }
 
     final catalog = CatalogDatabase(NativeDatabase(catalogFile));
     final meta = await CatalogRepository(catalog).meta();
@@ -50,19 +102,6 @@ final class AppDatabases {
         'Rebuild it with tool/build_catalog.dart.',
       );
     }
-
-    final myBottles = CatalogDatabase(
-      NativeDatabase(File('${dir.path}/my_bottles.sqlite')),
-    );
-    final user = UserDatabase(NativeDatabase(File('${dir.path}/user.sqlite')));
-    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    final photos = PhotoStore(
-      directory: Directory('${dir.path}/bottle_photos'),
-      bundled: manifest
-          .listAssets()
-          .where((a) => a.startsWith('assets/photos/'))
-          .toSet(),
-    );
-    return AppDatabases._(catalog, myBottles, user, photos);
+    return catalog;
   }
 }

@@ -4,7 +4,7 @@ Last updated: 2 November 2026
 
 ## The short version
 
-Gustaro does not collect your personal data. There is no account, no analytics and no advertising. The App works on your phone and does not send what you do in it to us or anyone else.
+Gustaro does not collect your personal data. There is no account, no analytics and no advertising. The App works on your phone and does not send what you do in it to us or anyone else. It only downloads wine updates from our server.
 
 ## Who we are
 
@@ -20,6 +20,12 @@ The App stores the following on your device only:
 
 We have no access to any of this.
 
+## Wine updates from our server
+
+The App downloads the latest wines and bottle photos from our server, over an encrypted connection. This request contains nothing about you: no account, no name, no device identifier, and nothing you scanned or typed. The only thing it says is which version of the catalogue your phone already has.
+
+Like any internet connection, it reveals your IP address and the time to the server and to our hosting provider, Railway. We do not store it, link it to you or use it. Our provider may keep short-term technical logs for running the service. The App works without a connection, using the last catalogue it downloaded.
+
 ## Camera and photos
 
 The camera is used to read barcodes and wine labels, and, if you choose, to take a picture of a bottle you add to the App. Reading happens on your phone using Apple's built-in technology. Images are not uploaded. A label photo is deleted right after its text is read. If you choose a photo from your library to read a label, only that photo is read, and the App keeps no copy of it. A picture you attach to a bottle you add is saved on your phone only, without its location or other hidden details, and is deleted with that bottle or with More > Delete my data.
@@ -27,6 +33,7 @@ The camera is used to read barcodes and wine labels, and, if you choose, to take
 ## What we don't do
 
 - We don't collect names, emails, locations or device identifiers
+- We don't send your scans, likes or bottles anywhere
 - We don't use analytics or crash-reporting services
 - We don't show ads or track you across apps or websites
 - We don't sell or share data

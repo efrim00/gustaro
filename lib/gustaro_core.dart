@@ -13,3 +13,4 @@ export 'src/recent/recent_scans.dart'
 export 'src/scan/label_matcher.dart' show LabelMatchConfig;
 export 'src/scan/scan_outcome.dart';
 export 'src/scan/scan_service.dart';
+export 'src/sync/catalog_sync.dart';

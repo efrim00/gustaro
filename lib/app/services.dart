@@ -3,12 +3,14 @@ import 'package:flutter/widgets.dart';
 import '../gustaro_core.dart';
 import '../l10n/app_localizations.dart';
 import 'app_databases.dart';
+import 'cloud_config.dart';
 import 'photo_store.dart';
 
 /// Everything screens need from the logic layer, created once at startup.
 class AppServices {
   AppServices(AppDatabases databases)
-    : photos = databases.photos,
+    : _catalogDb = databases.catalog,
+      photos = databases.photos,
       myBottles = MyBottlesStore(databases.myBottles),
       recent = RecentScansStore(databases.user),
       settings = SettingsStore(databases.user),
@@ -27,6 +29,7 @@ class AppServices {
   static const legalKey = 'legal_accepted_version';
   static const heroHiddenKey = 'hero_hidden';
 
+  final CatalogDatabase _catalogDb;
   final CatalogReader catalog;
   final PhotoStore photos;
   final MyBottlesStore myBottles;
@@ -46,6 +49,22 @@ class AppServices {
           if (!e.wine.isVerified) e.wine.id,
       },
     );
+  }
+
+  /// Fetches a newer catalogue, if there is one. Quiet on purpose: with no
+  /// signal the phone just keeps what it has.
+  Future<void> syncCatalog() async {
+    final directory = photos.cloudDirectory;
+    if (directory == null) return;
+    final result = await CatalogSync(
+      db: _catalogDb,
+      baseUrl: Uri.parse(gustaroApi),
+      photosDirectory: directory,
+    ).run();
+    if (result == SyncResult.updated) {
+      PaintingBinding.instance.imageCache.clear();
+      changed(wines: true);
+    }
   }
 
   void changed({bool wines = false}) {

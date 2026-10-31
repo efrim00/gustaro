@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gustaro catalogue</title>
+<style>
+  :root {
+    --brand: #d22b3b; --ink: #111; --muted: #666; --line: #e3e3e3;
+    --bg: #fafafa; --card: #fff; --ok: #1b7f3b; --warn: #9a6700; --err: #b42318;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 18px; margin: 0; }
+  header h1 span { color: var(--brand); }
+  #stats { color: var(--muted); font-size: 13px; flex: 1; }
+  main { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 57px); }
+  aside { border-right: 1px solid var(--line); background: var(--card); padding: 12px; overflow-y: auto; position: sticky; top: 57px; height: calc(100vh - 57px); }
+  section#view { padding: 20px 28px 60px; max-width: 980px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: #bbb; }
+  button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  button.primary:hover { filter: brightness(.95); }
+  button.danger { color: var(--err); }
+  button.link { border: 0; background: none; padding: 0; color: var(--brand); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select, textarea { font: inherit; width: 100%; padding: 7px 9px; border: 1px solid #ccc; border-radius: 8px; background: #fff; }
+  textarea { min-height: 70px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--brand) 35%, transparent); border-color: var(--brand); }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 3px; }
+  .field { margin-bottom: 12px; }
+  .row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 12px; }
+  .card h3 { font-size: 14px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .hint.ok { color: var(--ok); } .hint.warn { color: var(--warn); } .hint.err { color: var(--err); }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num { white-space: nowrap; }
+  .tree-winery { font-weight: 600; margin-top: 10px; cursor: pointer; padding: 3px 6px; border-radius: 6px; }
+  .tree-wine { cursor: pointer; padding: 3px 6px 3px 18px; border-radius: 6px; }
+  .tree-wine small { color: var(--muted); }
+  .tree-winery:hover, .tree-wine:hover { background: #f2f2f2; }
+  .selected { background: color-mix(in srgb, var(--brand) 12%, transparent) !important; }
+  #messages { position: fixed; right: 20px; bottom: 20px; max-width: 460px; z-index: 3; }
+  .msg { border-radius: 10px; padding: 10px 14px; margin-top: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.12); background: #fff; border-left: 4px solid var(--ok); }
+  .msg.err { border-left-color: var(--err); }
+  .msg ul { margin: 6px 0 0; padding-left: 18px; }
+  .banner { border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; background: #fff4f2; border: 1px solid #f3c7c0; }
+  .banner.warn { background: #fff8e6; border-color: #f0dca8; }
+  details summary { cursor: pointer; }
+  .empty { color: var(--muted); font-size: 14px; }
+  .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; background: #eee; margin-left: 6px; color: #444; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Gustaro</span> catalogue</h1>
+  <div id="stats"></div>
+  <button class="primary" id="new-bottle">+ New bottle</button>
+  <button id="invite" hidden>Invite editor</button>
+  <button id="logout" hidden>Sign out</button>
+</header>
+<main>
+  <aside>
+    <input id="search" placeholder="Search wineries and wines…" autocomplete="off">
+    <div id="tree"></div>
+  </aside>
+  <section id="view"></section>
+</main>
+<div id="messages"></div>
+
+<script>
+'use strict';
+
+const F = {
+  wineries: 'wineries.csv', wines: 'wines.csv', vintages: 'vintages.csv',
+  barcodes: 'barcodes.csv', wineTr: 'wine_translations.csv', vintageTr: 'vintage_translations.csv',
+};
+const TYPES = ['red', 'white', 'rose', 'orange', 'sparkling', 'dessert'];
+const LANG = 'ro';
+
+let state = null;            // {version, tables, errors, warnings} as last saved
+let current = { kind: 'new' }; // what the right panel shows
+let editing = null;          // {kind: 'vintage'|'barcode', id|null} inside the wine view
+
+// ---------- helpers ----------
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const num = s => String(s ?? '').trim().replace(',', '.');
+const splitList = s => String(s ?? '').split('|').map(x => x.trim()).filter(Boolean);
+const val = id => ($('#' + id)?.value ?? '').trim();
+
+function nextId(rows, col = 'id') {
+  return String(rows.reduce((max, r) => Math.max(max, parseInt(r[col], 10) || 0), 0) + 1);
+}
+function levenshtein(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function similarity(a, b) {
+  const longest = Math.max(a.length, b.length);
+  return longest === 0 ? 1 : 1 - levenshtein(a, b) / longest;
+}
+/** true/false for GTIN-8/12/13/14, null when not checkable. */
+function gtinValid(code) {
+  if (!/^\d+$/.test(code) || ![8, 12, 13, 14].includes(code.length)) return null;
+  const d = [...code].map(Number);
+  const check = d.pop();
+  let sum = 0;
+  for (let i = 0; i < d.length; i++) sum += d[d.length - 1 - i] * (i % 2 === 0 ? 3 : 1);
+  return (10 - sum % 10) % 10 === check;
+}
+
+// Table accessors; T is a tables object (state.tables or a draft copy).
+const rows = (T, name) => T[F[name]];
+const wineryById = (T, id) => rows(T, 'wineries').find(r => r.id === id);
+const wineById = (T, id) => rows(T, 'wines').find(r => r.id === id);
+const winesOf = (T, wineryId) => rows(T, 'wines').filter(r => r.winery_id === wineryId)
+  .sort((a, b) => a.name.localeCompare(b.name, 'ro'));
+const vintagesOf = (T, wineId) => rows(T, 'vintages').filter(r => r.wine_id === wineId)
+  .sort((a, b) => Number(b.year) - Number(a.year));
+const barcodesOf = (T, wineId) => rows(T, 'barcodes').filter(r => r.wine_id === wineId);
+const wineText = (T, wineId) => rows(T, 'wineTr').find(r => r.wine_id === wineId && r.lang === LANG);
+const vintageText = (T, vintageId) => rows(T, 'vintageTr').find(r => r.vintage_id === vintageId && r.lang === LANG);
+
+function setWineText(T, wineId, description) {
+  const r = wineText(T, wineId);
+  if (r) r.description = description;
+  else rows(T, 'wineTr').push({ wine_id: wineId, lang: LANG, description });
+}
+function setVintageText(T, vintageId, sensory_notes, food_pairings) {
+  const r = vintageText(T, vintageId);
+  if (r) Object.assign(r, { sensory_notes, food_pairings });
+  else rows(T, 'vintageTr').push({ vintage_id: vintageId, lang: LANG, sensory_notes, food_pairings });
+}
+function removeWhere(T, name, pred) {
+  T[F[name]] = rows(T, name).filter(r => !pred(r));
+}
+
+/** Exact (normalized) match, else the closest name above 0.8 as a suggestion. */
+function findByName(list, name) {
+  const wanted = norm(name);
+  if (!wanted) return { match: null, suggestion: null };
+  const match = list.find(r => norm(r.name) === wanted) || null;
+  if (match) return { match, suggestion: null };
+  let best = null, bestScore = 0.8;
+  for (const r of list) {
+    const s = similarity(norm(r.name), wanted);
+    if (s >= bestScore) { best = r; bestScore = s; }
+  }
+  return { match: null, suggestion: best };
+}
+
+// ---------- server ----------
+function showSignIn() {
+  document.querySelector('main').hidden = true;
+  document.querySelector('#new-bottle').hidden = true;
+  document.body.insertAdjacentHTML('beforeend', `<div class="card" style="max-width:420px;margin:48px auto">
+    <h2>Sign in</h2>
+    <p>Only invited editors can change the catalogue.</p>
+    <p><a style="display:inline-block;padding:10px 16px;background:#000;color:#fff;border-radius:6px;text-decoration:none" href="/auth/apple/start">Sign in with Apple</a></p>
+    <p class="hint">First time? Open the invitation link you were sent.</p></div>`);
+}
+
+async function load() {
+  const res = await fetch('/admin/api/catalog');
+  if (res.status === 401) return showSignIn();
+  state = await res.json();
+  const me = await (await fetch('/admin/api/me')).json();
+  $('#logout').hidden = false;
+  $('#invite').hidden = me.role !== 'owner';
+  render();
+}
+
+$('#logout').onclick = async () => {
+  await fetch('/admin/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  location.reload();
+};
+$('#invite').onclick = async () => {
+  const res = await fetch('/admin/api/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  const body = await res.json();
+  if (!res.ok) return message(body.error || 'Could not create an invitation.', [], true);
+  prompt('Send this link to the new editor. It works once, for 2 days:', body.url);
+};
+
+/** Applies mutate() to a copy, saves it; on refusal nothing changes. */
+async function commit(mutate, okMessage) {
+  const draft = structuredClone(state.tables);
+  mutate(draft);
+  let res, body;
+  try {
+    res = await fetch('/admin/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: state.version, tables: draft }),
+    });
+    body = await res.json();
+  } catch (e) {
+    message('Could not reach the server. Check your connection and try again.', [], true);
+    return false;
+  }
+  if (res.status === 401) { location.reload(); return false; }
+  if (!res.ok) {
+    message(body.error || 'Not saved: fix these first.', body.errors || [], true);
+    return false;
+  }
+  state = body;
+  message(okMessage + ' Saved. Phones get it the next time they open the app.');
+  render();
+  return true;
+}
+
+async function postPhoto(url, payload) {
+  let res, body;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    body = await res.json();
+  } catch (e) {
+    message('Could not reach the server. Check your connection and try again.', [], true);
+    return false;
+  }
+  if (!res.ok) { message(body.error || 'Photo not saved.', [], true); return false; }
+  state.photos = body.photos;
+  return true;
+}
+
+/** Shrinks any picture to a JPEG of at most 1200 px and uploads it. */
+async function uploadPhoto(wineId, file) {
+  let bitmap;
+  try { bitmap = await createImageBitmap(file); }
+  catch (e) { message('That file is not a picture this browser can open.', [], true); return false; }
+  const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+  const data = await new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.readAsDataURL(blob);
+  });
+  const ok = await postPhoto('/admin/api/photo', { wine_id: String(wineId), data });
+  if (ok) message('Photo saved. Phones get it the next time they open the app.');
+  return ok;
+}
+
+function message(text, list = [], isError = false) {
+  const el = document.createElement('div');
+  el.className = 'msg' + (isError ? ' err' : '');
+  el.innerHTML = esc(text) + (list.length ? '<ul>' + list.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '');
+  $('#messages').append(el);
+  setTimeout(() => el.remove(), isError ? 15000 : 4000);
+  el.onclick = () => el.remove();
+}
+
+// ---------- rendering ----------
+function render() {
+  const T = state.tables;
+  $('#stats').textContent =
+    `${rows(T, 'wineries').length} wineries · ${rows(T, 'wines').length} wines · ` +
+    `${rows(T, 'vintages').length} years · ${rows(T, 'barcodes').length} barcodes`;
+  renderTree();
+  if (current.kind === 'wine' && !wineById(T, current.id)) current = { kind: 'new' };
+  if (current.kind === 'winery' && !wineryById(T, current.id)) current = { kind: 'new' };
+  ({ new: renderNewBottle, wine: renderWine, winery: renderWinery })[current.kind]();
+}
+
+function banners() {
+  let html = '';
+  if (state.errors.length) {
+    html += `<div class="banner"><b>The data files have errors</b> (probably from editing them by hand). Saving is blocked until they are fixed:<ul>${state.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
+  }
+  const notes = state.warnings.filter(w => !w.startsWith('the catalogue has no wines'));
+  if (notes.length) {
+    html += `<details class="banner warn"><summary>${notes.length} note(s) about the data</summary><ul>${notes.map(w => `<li>${esc(w)}</li>`).join('')}</ul></details>`;
+  }
+  return html;
+}
+
+function renderTree() {
+  const T = state.tables;
+  const q = norm($('#search').value);
+  let html = '';
+  const wineries = [...rows(T, 'wineries')].sort((a, b) => a.name.localeCompare(b.name, 'ro'));
+  for (const w of wineries) {
+    const wines = winesOf(T, w.id);
+    const wineryHit = !q || norm(w.name).includes(q);
+    const shown = wines.filter(v => wineryHit || norm(v.name).includes(q));
+    if (!wineryHit && !shown.length) continue;
+    const sel = current.kind === 'winery' && current.id === w.id ? ' selected' : '';
+    html += `<div class="tree-winery${sel}" data-winery="${esc(w.id)}">${esc(w.name)}</div>`;
+    for (const v of shown) {
+      const years = vintagesOf(T, v.id).map(x => x.year).join(', ');
+      const s = current.kind === 'wine' && current.id === v.id ? ' selected' : '';
+      html += `<div class="tree-wine${s}" data-wine="${esc(v.id)}">${esc(v.name)} <small>${esc(years)}</small></div>`;
+    }
+  }
+  $('#tree').innerHTML = html || '<p class="empty">No wines yet. Use “+ New bottle”.</p>';
+}
+
+$('#tree').addEventListener('click', e => {
+  const winery = e.target.closest('[data-winery]');
+  const wine = e.target.closest('[data-wine]');
+  if (wine) current = { kind: 'wine', id: wine.dataset.wine };
+  else if (winery) current = { kind: 'winery', id: winery.dataset.winery };
+  else return;
+  editing = null;
+  render();
+});
+$('#search').addEventListener('input', renderTree);
+$('#new-bottle').addEventListener('click', () => { current = { kind: 'new' }; editing = null; render(); });
+
+// ---------- new bottle ----------
+function renderNewBottle() {
+  const T = state.tables;
+  $('#view').innerHTML = banners() + `
+  <div class="card">
+    <h2>New bottle</h2>
+    <p class="hint">Fill in what's on the bottle; empty fields are fine except where marked *. Existing wineries and wines are suggested as you type.</p>
+    <h3>Barcode</h3>
+    <div class="row">
+      <div class="field"><label for="nb-code">Barcode digits (under the bars)</label>
+        <input id="nb-code" inputmode="numeric" autocomplete="off"><div class="hint" id="nb-code-hint">Leave empty if the bottle has none.</div></div>
+      <div class="field"><label for="nb-scope">The barcode is…</label>
+        <select id="nb-scope"><option value="all">the same on every year (if unsure)</option><option value="year">only on this year</option></select></div>
+      <div class="field"><label for="nb-size">Bottle size (ml)</label><input id="nb-size" value="750" inputmode="numeric"></div>
+    </div>
+    <h3>Winery &amp; wine</h3>
+    <div class="row">
+      <div class="field"><label for="nb-winery">Winery *</label>
+        <input id="nb-winery" list="nb-winery-list" autocomplete="off"><div class="hint" id="nb-winery-hint"></div></div>
+      <div class="field" id="nb-region-field"><label for="nb-region">Region</label>
+        <input id="nb-region" list="nb-region-list" placeholder="Codru, Ștefan Vodă, Valul lui Traian…"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="nb-wine">Wine name (as on the label) *</label>
+        <input id="nb-wine" list="nb-wine-list" autocomplete="off"><div class="hint" id="nb-wine-hint"></div></div>
+    </div>
+    <div class="field"><label for="nb-photo">Bottle photo (optional)</label>
+      <input id="nb-photo" type="file" accept="image/*"><div class="hint">Shown in the app. You can also add or change it later on the wine's page.</div></div>
+    <div id="nb-new-wine">
+      <div class="row">
+        <div class="field"><label for="nb-type">Type *</label>
+          <select id="nb-type"><option value=""></option>${TYPES.map(t => `<option>${t}</option>`).join('')}</select></div>
+        <div class="field"><label for="nb-grapes">Grape varieties (comma separated)</label><input id="nb-grapes"></div>
+      </div>
+      <div class="field"><label for="nb-description">Description (Romanian)</label><textarea id="nb-description"></textarea></div>
+    </div>
+    <h3>Year</h3>
+    <div class="row">
+      <div class="field"><label for="nb-year">Year (harvest) *</label><input id="nb-year" inputmode="numeric"><div class="hint" id="nb-year-hint"></div></div>
+    </div>
+    <div id="nb-new-year">
+      <div class="row">
+        <div class="field"><label for="nb-abv">Alcohol %</label><input id="nb-abv" placeholder="13,5"></div>
+        <div class="field"><label for="nb-acidity">Acidity g/L</label><input id="nb-acidity"></div>
+        <div class="field"><label for="nb-tannins">Tannins g/L</label><input id="nb-tannins"></div>
+        <div class="field"><label for="nb-sugar">Residual sugar g/L</label><input id="nb-sugar"></div>
+      </div>
+      <div class="field"><label for="nb-notes">Sensory notes (Romanian)</label><textarea id="nb-notes"></textarea></div>
+      <div class="field"><label for="nb-pairings">Food pairings (Romanian), one per line</label><textarea id="nb-pairings"></textarea></div>
+    </div>
+    <div class="actions"><button class="primary" id="nb-save">Save bottle</button></div>
+  </div>
+  <datalist id="nb-winery-list">${rows(T, 'wineries').map(w => `<option value="${esc(w.name)}">`).join('')}</datalist>
+  <datalist id="nb-region-list">${[...new Set(rows(T, 'wineries').map(w => w.region).filter(Boolean).concat(['Codru', 'Ștefan Vodă', 'Valul lui Traian', 'Divin']))].map(r => `<option value="${esc(r)}">`).join('')}</datalist>
+  <datalist id="nb-wine-list"></datalist>`;
+
+  for (const id of ['nb-code', 'nb-winery', 'nb-wine', 'nb-year']) $('#' + id).addEventListener('input', updateNewBottleHints);
+  $('#view').onclick = onSuggestionClick;
+  $('#nb-save').addEventListener('click', saveNewBottle);
+  updateNewBottleHints();
+}
+
+function onSuggestionClick(e) {
+  const btn = e.target.closest('[data-use]');
+  if (!btn) return;
+  $('#' + btn.dataset.use).value = btn.dataset.value;
+  updateNewBottleHints();
+}
+
+/** Works out what already exists for the current form values. */
+function newBottleContext() {
+  const T = state.tables;
+  const winery = findByName(rows(T, 'wineries'), val('nb-winery'));
+  const wines = winery.match ? winesOf(T, winery.match.id) : [];
+  const wine = findByName(wines, val('nb-wine'));
+  const year = val('nb-year');
+  const vintage = wine.match ? vintagesOf(T, wine.match.id).find(v => v.year === year) : null;
+  return { winery, wines, wine, vintage };
+}
+
+function updateNewBottleHints() {
+  const T = state.tables;
+  const ctx = newBottleContext();
+  const hint = (id, html, cls = '') => { const el = $('#' + id); el.className = 'hint ' + cls; el.innerHTML = html; };
+  const suggest = (field, r, what) =>
+    `Did you mean ${what} “${esc(r.name)}”? <button class="link" data-use="${field}" data-value="${esc(r.name)}">Use it</button>`;
+
+  // Barcode
+  const code = val('nb-code').replace(/\s/g, '');
+  if (!code) hint('nb-code-hint', 'Leave empty if the bottle has none.');
+  else if (gtinValid(code) === false) hint('nb-code-hint', 'The last digit does not match the others (check digit). Please check for a typo.', 'err');
+  else {
+    const users = [...new Set(rows(T, 'barcodes').filter(b => b.code === code).map(b => b.wine_id))]
+      .map(id => wineById(T, id)?.name).filter(Boolean);
+    if (users.length) hint('nb-code-hint', `Already used by: ${esc(users.join(', '))}`, 'warn');
+    else hint('nb-code-hint', gtinValid(code) ? 'Check digit OK.' : 'Not a standard EAN/UPC number; fine if that is what is printed.', gtinValid(code) ? 'ok' : '');
+  }
+
+  // Winery
+  if (ctx.winery.match) hint('nb-winery-hint', `Existing winery (${esc(ctx.winery.match.region || 'no region')}).`, 'ok');
+  else if (ctx.winery.suggestion) hint('nb-winery-hint', suggest('nb-winery', ctx.winery.suggestion, 'winery'), 'warn');
+  else hint('nb-winery-hint', val('nb-winery') ? 'New winery.' : '');
+  $('#nb-region-field').style.display = ctx.winery.match ? 'none' : '';
+
+  // Wine
+  $('#nb-wine-list').innerHTML = ctx.wines.map(w => `<option value="${esc(w.name)}">`).join('');
+  if (ctx.wine.match) hint('nb-wine-hint', `Existing wine (${esc(ctx.wine.match.type)}). Years: ${esc(vintagesOf(T, ctx.wine.match.id).map(v => v.year).join(', ') || 'none')}.`, 'ok');
+  else if (ctx.wine.suggestion) hint('nb-wine-hint', suggest('nb-wine', ctx.wine.suggestion, 'wine'), 'warn');
+  else hint('nb-wine-hint', val('nb-wine') ? 'New wine.' : (ctx.wines.length ? `This winery has: ${esc(ctx.wines.map(w => w.name).join(', '))}` : ''));
+  $('#nb-new-wine').style.display = ctx.wine.match ? 'none' : '';
+
+  // Year
+  if (ctx.vintage) hint('nb-year-hint', 'This year already exists; it stays unchanged and only the barcode is added. Edit it from the wine page.', 'warn');
+  else hint('nb-year-hint', '');
+  $('#nb-new-year').style.display = ctx.vintage ? 'none' : '';
+}
+
+async function saveNewBottle() {
+  const ctx = newBottleContext();
+  const problems = [];
+  const code = val('nb-code').replace(/\s/g, '');
+  if (!val('nb-winery')) problems.push('Winery is required.');
+  if (!val('nb-wine')) problems.push('Wine name is required.');
+  if (!/^\d{4}$/.test(val('nb-year'))) problems.push('Year must be 4 digits.');
+  if (!ctx.wine.match && !val('nb-type')) problems.push('Choose the wine type.');
+  if (code && gtinValid(code) === false &&
+      !confirm('The barcode check digit does not match, so it may contain a typo. Save anyway?')) return;
+  if (problems.length) return message('Not saved:', problems, true);
+
+  const summary = [];
+  const photoFile = $('#nb-photo').files[0];
+  const ok = await commit(T => {
+    let wineryId = ctx.winery.match?.id;
+    if (!wineryId) {
+      wineryId = nextId(rows(T, 'wineries'));
+      rows(T, 'wineries').push({ id: wineryId, name: val('nb-winery'), region: val('nb-region') });
+      summary.push('new winery');
+    }
+    let wineId = ctx.wine.match?.id;
+    if (!wineId) {
+      wineId = nextId(rows(T, 'wines'));
+      const grapes = val('nb-grapes').split(',').map(s => s.trim()).filter(Boolean).join(' | ');
+      rows(T, 'wines').push({ id: wineId, winery_id: wineryId, name: val('nb-wine'), type: val('nb-type'), grape_varieties: grapes });
+      setWineText(T, wineId, val('nb-description'));
+      summary.push('new wine');
+    }
+    let vintageId = ctx.vintage?.id;
+    if (!vintageId) {
+      vintageId = nextId(rows(T, 'vintages'));
+      rows(T, 'vintages').push({
+        id: vintageId, wine_id: wineId, year: val('nb-year'), abv: num(val('nb-abv')),
+        acidity_g_l: num(val('nb-acidity')), tannins_g_l: num(val('nb-tannins')), residual_sugar_g_l: num(val('nb-sugar')),
+      });
+      const pairings = val('nb-pairings').split('\n').map(s => s.trim()).filter(Boolean).join(' | ');
+      setVintageText(T, vintageId, val('nb-notes'), pairings);
+      summary.push('new year ' + val('nb-year'));
+    }
+    if (code) {
+      const row = { code, wine_id: wineId, vintage_id: $('#nb-scope').value === 'all' ? '' : vintageId, bottle_size_ml: val('nb-size') };
+      const covered = barcodesOf(T, wineId).some(b => b.code === code && (b.vintage_id === '' || b.vintage_id === row.vintage_id) && b.bottle_size_ml === row.bottle_size_ml);
+      if (!covered) { rows(T, 'barcodes').push(row); summary.push('barcode'); }
+    }
+    current = { kind: 'wine', id: wineId };
+  }, `Added ${val('nb-wine')} ${val('nb-year')}.`);
+  if (!ok) {
+    current = { kind: 'new' };
+    return;
+  }
+  if (photoFile && await uploadPhoto(current.id, photoFile)) render();
+  if (!summary.length) message('Nothing new: that bottle was already in the catalogue.');
+}
+
+// ---------- winery ----------
+function renderWinery() {
+  const T = state.tables;
+  const w = wineryById(T, current.id);
+  const wines = winesOf(T, w.id);
+  $('#view').innerHTML = banners() + `
+  <div class="card">
+    <h2>Winery <span class="pill">#${esc(w.id)}</span></h2>
+    <div class="row">
+      <div class="field"><label for="w-name">Name *</label><input id="w-name" value="${esc(w.name)}"></div>
+      <div class="field"><label for="w-region">Region</label><input id="w-region" value="${esc(w.region)}"></div>
+    </div>
+    <div class="actions">
+      <button class="danger" id="w-delete" ${wines.length ? 'disabled title="Delete its wines first"' : ''}>Delete winery</button>
+      <button class="primary" id="w-save">Save</button>
+    </div>
+  </div>
+  <div class="card"><h3>Wines</h3>${wines.length ? '<ul>' + wines.map(v => `<li><button class="link" data-open-wine="${esc(v.id)}">${esc(v.name)}</button></li>`).join('') + '</ul>' : '<p class="empty">No wines.</p>'}</div>`;
+
+  $('#w-save').onclick = () => commit(T => {
+    Object.assign(wineryById(T, w.id), { name: val('w-name'), region: val('w-region') });
+  }, 'Winery updated.');
+  $('#w-delete').onclick = () => {
+    if (!confirm(`Delete winery “${w.name}”?`)) return;
+    commit(T => removeWhere(T, 'wineries', r => r.id === w.id), 'Winery deleted.');
+  };
+  $('#view').onclick = e => {
+    const b = e.target.closest('[data-open-wine]');
+    if (b) { current = { kind: 'wine', id: b.dataset.openWine }; render(); }
+  };
+}
+
+// ---------- wine ----------
+function renderWine() {
+  const T = state.tables;
+  const wine = wineById(T, current.id);
+  const winery = wineryById(T, wine.winery_id);
+  const vintages = vintagesOf(T, wine.id);
+  const barcodes = barcodesOf(T, wine.id);
+  const yearOf = id => vintages.find(v => v.id === id)?.year;
+
+  $('#view').innerHTML = banners() + `
+  <div class="card">
+    <h2>${esc(wine.name)} <span class="pill">wine #${esc(wine.id)}</span></h2>
+    <p class="hint">Winery: <button class="link" id="go-winery">${esc(winery?.name)}</button></p>
+    <div class="row">
+      <div class="field"><label for="wn-name">Name *</label><input id="wn-name" value="${esc(wine.name)}"></div>
+      <div class="field"><label for="wn-type">Type *</label>
+        <select id="wn-type">${TYPES.map(t => `<option ${t === wine.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="field"><label for="wn-grapes">Grape varieties (comma separated)</label>
+        <input id="wn-grapes" value="${esc(splitList(wine.grape_varieties).join(', '))}"></div>
+    </div>
+    <div class="field"><label for="wn-description">Description (Romanian)</label>
+      <textarea id="wn-description">${esc(wineText(T, wine.id)?.description)}</textarea></div>
+    <div class="actions">
+      <button class="danger" id="wn-delete">Delete wine…</button>
+      <button class="primary" id="wn-save">Save wine</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Photo</h3>
+    <p class="hint">Shown in the app on this wine's page and in lists. Any picture works; it is shrunk to fit. Use a straight-on photo of the bottle on a plain background.</p>
+    <div class="row" style="align-items:center">
+      ${(state.photos || []).includes(String(wine.id)) ? `<img src="/v1/photos/${esc(wine.id)}?${Date.now()}" alt="" style="height:160px;max-width:200px;object-fit:contain;border:1px solid var(--line)">` : '<span class="empty">No photo yet.</span>'}
+      <div class="field"><label for="ph-file">${(state.photos || []).includes(String(wine.id)) ? 'Replace photo' : 'Add photo'}</label>
+        <input id="ph-file" type="file" accept="image/*"></div>
+      ${(state.photos || []).includes(String(wine.id)) ? '<button class="danger" id="ph-delete">Remove photo</button>' : ''}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Years</h3>
+    ${vintages.length ? `<table><tr><th>Year</th><th>Alc.</th><th>Acid.</th><th>Tann.</th><th>Sugar</th><th>Sensory notes</th><th>Pairings</th><th></th></tr>
+    ${vintages.map(v => {
+      const tx = vintageText(T, v.id);
+      return `<tr><td class="num"><b>${esc(v.year)}</b></td><td class="num">${esc(v.abv)}</td><td class="num">${esc(v.acidity_g_l)}</td>
+        <td class="num">${esc(v.tannins_g_l)}</td><td class="num">${esc(v.residual_sugar_g_l)}</td>
+        <td>${esc(tx?.sensory_notes)}</td><td>${esc(splitList(tx?.food_pairings).join(', '))}</td>
+        <td class="num"><button data-edit-vintage="${esc(v.id)}">Edit</button></td></tr>`;
+    }).join('')}</table>` : '<p class="empty">No years yet: the app cannot show this wine until it has one.</p>'}
+    ${editing?.kind === 'vintage' ? vintageForm(T, wine, editing.id) : '<div class="actions"><button data-edit-vintage="">+ Add year</button></div>'}
+  </div>
+
+  <div class="card">
+    <h3>Barcodes</h3>
+    ${barcodes.length ? `<table><tr><th>Code</th><th>Applies to</th><th>Size</th><th></th></tr>
+    ${barcodes.map((b, i) => `<tr><td class="num">${esc(b.code)}</td><td>${b.vintage_id ? 'only ' + esc(yearOf(b.vintage_id)) : 'every year'}</td>
+      <td class="num">${b.bottle_size_ml ? esc(b.bottle_size_ml) + ' ml' : ''}</td><td class="num"><button data-edit-barcode="${i}">Edit</button></td></tr>`).join('')}</table>`
+      : '<p class="empty">No barcode: only label scans can find this wine.</p>'}
+    ${editing?.kind === 'barcode' ? barcodeForm(T, wine, editing.id) : '<div class="actions"><button data-edit-barcode="">+ Add barcode</button></div>'}
+  </div>`;
+
+  $('#go-winery').onclick = () => { current = { kind: 'winery', id: wine.winery_id }; render(); };
+  $('#ph-file').onchange = async e => {
+    const file = e.target.files[0];
+    if (file && await uploadPhoto(wine.id, file)) render();
+  };
+  if ($('#ph-delete')) $('#ph-delete').onclick = async () => {
+    const ok = await postPhoto('/admin/api/photo/delete', { wine_id: String(wine.id) });
+    if (ok) { message('Photo removed.'); render(); }
+  };
+  $('#wn-save').onclick = () => commit(T => {
+    Object.assign(wineById(T, wine.id), {
+      name: val('wn-name'), type: val('wn-type'),
+      grape_varieties: val('wn-grapes').split(',').map(s => s.trim()).filter(Boolean).join(' | '),
+    });
+    setWineText(T, wine.id, val('wn-description'));
+  }, 'Wine updated.');
+  $('#wn-delete').onclick = () => {
+    if (!confirm(`Delete “${wine.name}” with its ${vintages.length} year(s) and ${barcodes.length} barcode(s)? This cannot be undone here (the files are in git).`)) return;
+    const vintageIds = new Set(vintages.map(v => v.id));
+    commit(T => {
+      removeWhere(T, 'barcodes', r => r.wine_id === wine.id);
+      removeWhere(T, 'vintageTr', r => vintageIds.has(r.vintage_id));
+      removeWhere(T, 'vintages', r => r.wine_id === wine.id);
+      removeWhere(T, 'wineTr', r => r.wine_id === wine.id);
+      removeWhere(T, 'wines', r => r.id === wine.id);
+    }, 'Wine deleted.');
+  };
+  $('#view').onclick = e => {
+    const v = e.target.closest('[data-edit-vintage]');
+    const b = e.target.closest('[data-edit-barcode]');
+    if (v) { editing = { kind: 'vintage', id: v.dataset.editVintage || null }; render(); }
+    if (b) { editing = { kind: 'barcode', id: b.dataset.editBarcode === '' ? null : Number(b.dataset.editBarcode) }; render(); }
+  };
+  if (editing?.kind === 'vintage') wireVintageForm(wine, editing.id);
+  if (editing?.kind === 'barcode') wireBarcodeForm(wine, editing.id);
+}
+
+function vintageForm(T, wine, id) {
+  const v = id ? rows(T, 'vintages').find(r => r.id === id) : {};
+  const tx = id ? vintageText(T, id) : {};
+  return `<div class="card" style="margin-top:12px;background:#fcfcfc">
+    <h3>${id ? 'Edit ' + esc(v.year) : 'New year'}</h3>
+    <div class="row">
+      <div class="field"><label for="vf-year">Year *</label><input id="vf-year" value="${esc(v.year)}" inputmode="numeric"></div>
+      <div class="field"><label for="vf-abv">Alcohol %</label><input id="vf-abv" value="${esc(v.abv)}"></div>
+      <div class="field"><label for="vf-acidity">Acidity g/L</label><input id="vf-acidity" value="${esc(v.acidity_g_l)}"></div>
+      <div class="field"><label for="vf-tannins">Tannins g/L</label><input id="vf-tannins" value="${esc(v.tannins_g_l)}"></div>
+      <div class="field"><label for="vf-sugar">Residual sugar g/L</label><input id="vf-sugar" value="${esc(v.residual_sugar_g_l)}"></div>
+    </div>
+    <div class="field"><label for="vf-notes">Sensory notes (Romanian)</label><textarea id="vf-notes">${esc(tx?.sensory_notes)}</textarea></div>
+    <div class="field"><label for="vf-pairings">Food pairings (Romanian), one per line</label><textarea id="vf-pairings">${esc(splitList(tx?.food_pairings).join('\n'))}</textarea></div>
+    <div class="actions">
+      ${id ? '<button class="danger" id="vf-delete">Delete year</button>' : ''}
+      <button id="vf-cancel">Cancel</button><button class="primary" id="vf-save">Save year</button>
+    </div></div>`;
+}
+
+function wireVintageForm(wine, id) {
+  $('#vf-cancel').onclick = () => { editing = null; render(); };
+  $('#vf-save').onclick = async () => {
+    if (!/^\d{4}$/.test(val('vf-year'))) return message('Not saved:', ['Year must be 4 digits.'], true);
+    if (vintagesOf(state.tables, wine.id).some(v => v.year === val('vf-year') && v.id !== id)) {
+      return message('Not saved:', [`This wine already has ${val('vf-year')}. Edit that year instead.`], true);
+    }
+    const ok = await commit(T => {
+      const vintageId = id || nextId(rows(T, 'vintages'));
+      const fields = {
+        year: val('vf-year'), abv: num(val('vf-abv')), acidity_g_l: num(val('vf-acidity')),
+        tannins_g_l: num(val('vf-tannins')), residual_sugar_g_l: num(val('vf-sugar')),
+      };
+      if (id) Object.assign(rows(T, 'vintages').find(r => r.id === id), fields);
+      else rows(T, 'vintages').push({ id: vintageId, wine_id: wine.id, ...fields });
+      setVintageText(T, vintageId, val('vf-notes'),
+        val('vf-pairings').split('\n').map(s => s.trim()).filter(Boolean).join(' | '));
+    }, id ? 'Year updated.' : 'Year added.');
+    if (ok) { editing = null; render(); }
+  };
+  if (id) $('#vf-delete').onclick = async () => {
+    const T = state.tables;
+    const used = rows(T, 'barcodes').filter(b => b.vintage_id === id).length;
+    if (!confirm(`Delete this year${used ? ` and ${used} barcode(s) that only apply to it` : ''}?`)) return;
+    const ok = await commit(T => {
+      removeWhere(T, 'barcodes', r => r.vintage_id === id);
+      removeWhere(T, 'vintageTr', r => r.vintage_id === id);
+      removeWhere(T, 'vintages', r => r.id === id);
+    }, 'Year deleted.');
+    if (ok) { editing = null; render(); }
+  };
+}
+
+function barcodeForm(T, wine, index) {
+  const b = index === null ? { vintage_id: '', bottle_size_ml: '750' } : barcodesOf(T, wine.id)[index];
+  const vintages = vintagesOf(T, wine.id);
+  return `<div class="card" style="margin-top:12px;background:#fcfcfc">
+    <h3>${index === null ? 'New barcode' : 'Edit barcode'}</h3>
+    <div class="row">
+      <div class="field"><label for="bf-code">Barcode digits *</label><input id="bf-code" value="${esc(b.code)}" inputmode="numeric"><div class="hint" id="bf-hint"></div></div>
+      <div class="field"><label for="bf-vintage">Applies to</label>
+        <select id="bf-vintage"><option value="">every year (if unsure)</option>
+        ${vintages.map(v => `<option value="${esc(v.id)}" ${v.id === b.vintage_id ? 'selected' : ''}>only ${esc(v.year)}</option>`).join('')}</select></div>
+      <div class="field"><label for="bf-size">Bottle size (ml)</label><input id="bf-size" value="${esc(b.bottle_size_ml)}" inputmode="numeric"></div>
+    </div>
+    <div class="actions">
+      ${index !== null ? '<button class="danger" id="bf-delete">Delete barcode</button>' : ''}
+      <button id="bf-cancel">Cancel</button><button class="primary" id="bf-save">Save barcode</button>
+    </div></div>`;
+}
+
+function wireBarcodeForm(wine, index) {
+  const original = index === null ? null : barcodesOf(state.tables, wine.id)[index];
+  const same = r => original && r.code === original.code && r.wine_id === original.wine_id &&
+    r.vintage_id === original.vintage_id && r.bottle_size_ml === original.bottle_size_ml;
+  const check = () => {
+    const code = val('bf-code').replace(/\s/g, '');
+    const ok = gtinValid(code);
+    $('#bf-hint').className = 'hint ' + (ok === false ? 'err' : ok ? 'ok' : '');
+    $('#bf-hint').textContent = !code ? '' : ok === false ? 'Check digit does not match: typo?' : ok ? 'Check digit OK.' : 'Not a standard EAN/UPC number.';
+  };
+  $('#bf-code').oninput = check;
+  check();
+  $('#bf-cancel').onclick = () => { editing = null; render(); };
+  $('#bf-save').onclick = async () => {
+    const code = val('bf-code').replace(/\s/g, '');
+    if (!code) return message('Not saved:', ['Enter the barcode digits.'], true);
+    if (gtinValid(code) === false && !confirm('The check digit does not match, so it may contain a typo. Save anyway?')) return;
+    const row = { code, wine_id: wine.id, vintage_id: val('bf-vintage'), bottle_size_ml: val('bf-size') };
+    const ok = await commit(T => {
+      if (original) T[F.barcodes] = rows(T, 'barcodes').map(r => same(r) ? row : r);
+      else rows(T, 'barcodes').push(row);
+    }, original ? 'Barcode updated.' : 'Barcode added.');
+    if (ok) { editing = null; render(); }
+  };
+  if (original) $('#bf-delete').onclick = async () => {
+    if (!confirm(`Delete barcode ${original.code}?`)) return;
+    const ok = await commit(T => removeWhere(T, 'barcodes', same), 'Barcode deleted.');
+    if (ok) { editing = null; render(); }
+  };
+}
+
+load().catch(() => message('Could not load the catalogue. Check your connection and try again.', [], true));
+</script>
+</body>
+</html>

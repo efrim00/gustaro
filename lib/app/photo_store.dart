@@ -7,9 +7,12 @@ import 'package:flutter/painting.dart';
 /// Bottle photos. Catalogue wines ship as `assets/photos/<wine id>.jpg`;
 /// photos of bottles added on this phone live in [directory] and never leave it.
 class PhotoStore {
-  PhotoStore({this.directory, this.bundled = const {}});
+  PhotoStore({this.directory, this.cloudDirectory, this.bundled = const {}});
 
   final Directory? directory;
+
+  /// Photos downloaded from the Gustaro server, as `<wine id>.jpg`.
+  final Directory? cloudDirectory;
   final Set<String> bundled;
 
   static const _maxSide = 1200;
@@ -17,10 +20,15 @@ class PhotoStore {
   File? _file(int wineId) =>
       directory == null ? null : File('${directory!.path}/$wineId.png');
 
-  /// The photo of [wineId], or null when it has none.
+  /// The photo of [wineId], or null when it has none. A photo taken on this
+  /// phone wins over the server's, which wins over the one in the app.
   ImageProvider? imageFor(int wineId) {
     final file = _file(wineId);
     if (file != null && file.existsSync()) return FileImage(file);
+    final cloud = cloudDirectory == null
+        ? null
+        : File('${cloudDirectory!.path}/$wineId.jpg');
+    if (cloud != null && cloud.existsSync()) return FileImage(cloud);
     final asset = 'assets/photos/$wineId.jpg';
     return bundled.contains(asset) ? AssetImage(asset) : null;
   }

@@ -40,7 +40,7 @@ language English, bundle ID `com.gustaro.gustaro`, SKU `gustaro`.
 | Privacy Policy URL | your hosted `privacy.html` |
 | Copyright | 2026 Paul Efrim |
 | Price | Free |
-| App Privacy | **Data Not Collected** |
+| App Privacy | **Data Not Collected** (the app only downloads the catalogue; no identifiers are sent. If you ever add accounts, analytics or per-user data, this changes.) |
 | Tracking | No |
 | Encryption | Already answered in the app (no non-exempt encryption) |
 | Age rating | Answer truthfully: alcohol references are frequent, because the app is about wine. Accept the rating Apple calculates. |
@@ -73,7 +73,7 @@ language English, bundle ID `com.gustaro.gustaro`, SKU `gustaro`.
 >
 > The Wines tab lists the catalogue. More → Add a wine bottle stores a bottle on
 > the device only; nothing is uploaded. The camera reads barcodes and labels on
-> the device with Apple's Vision framework. The app makes no network requests.
+> the device with Apple's Vision framework. The app downloads catalogue updates (wines and photos) from our server over HTTPS and sends no personal data; it works fully offline with the catalogue it has.
 >
 > Explore and the sommelier are marked as upcoming features.
 
