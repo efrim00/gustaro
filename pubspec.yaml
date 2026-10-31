@@ -1,7 +1,7 @@
 name: gustaro
 description: "Identify Moldovan wines by scanning the bottle."
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ^3.13.4
@@ -10,8 +10,11 @@ dependencies:
   drift: ^2.35.0
   flutter:
     sdk: flutter
-  google_mlkit_text_recognition: ^0.17.1
+  flutter_localizations:
+    sdk: flutter
+  flutter_svg: ^2.3.2
   image_picker: ^1.2.3
+  intl: ^0.20.3
   mobile_scanner: ^7.4.2
   path_provider: ^2.1.6
 
@@ -25,6 +28,34 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  generate: true
 
   assets:
     - assets/catalog.sqlite
+    - assets/brand/
+    - assets/icons/
+    - assets/legal/
+    - assets/photos/
+    - assets/fonts/OFL.txt
+
+  fonts:
+    - family: Onest
+      fonts:
+        - asset: assets/fonts/Onest-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Onest-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Onest-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Onest-Bold.ttf
+          weight: 700
+    - family: Domine
+      fonts:
+        - asset: assets/fonts/Domine-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Domine-Bold.ttf
+          weight: 700
+    - family: Caveat
+      fonts:
+        - asset: assets/fonts/Caveat-Bold.ttf
+          weight: 700

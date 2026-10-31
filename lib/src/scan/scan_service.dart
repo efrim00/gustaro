@@ -9,7 +9,7 @@ import 'scan_outcome.dart';
 class ScanService {
   ScanService(this._catalog, {this.labelConfig = const LabelMatchConfig()});
 
-  final CatalogRepository _catalog;
+  final CatalogReader _catalog;
   final LabelMatchConfig labelConfig;
   Future<LabelMatcher>? _matcher;
 
@@ -26,6 +26,9 @@ class ScanService {
   /// [ocrText] is the full text recognized on the label.
   Future<ScanOutcome> resolveLabel(String ocrText) async =>
       resolution.resolveLabel(ocrText, await (_matcher ??= _buildMatcher()));
+
+  /// Call after the set of wines changed (a bottle was added or removed).
+  void catalogChanged() => _matcher = null;
 
   Future<LabelMatcher> _buildMatcher() async =>
       LabelMatcher(await _catalog.labelIndex(), config: labelConfig);

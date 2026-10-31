@@ -78,7 +78,7 @@ CatalogBuild validateCatalog(Map<String, String> csvFiles, {DateTime? now}) {
 
   final wineryIds = <int>{};
   for (final row in tables['wineries.csv']!) {
-    final id = c.integer(row, 'id', required: true);
+    final id = c.catalogId(row);
     final name = c.text(row, 'name', required: true);
     if (id == null || name == null) continue;
     if (!wineryIds.add(id)) {
@@ -96,7 +96,7 @@ CatalogBuild validateCatalog(Map<String, String> csvFiles, {DateTime? now}) {
 
   final wineNames = <int, String>{};
   for (final row in tables['wines.csv']!) {
-    final id = c.integer(row, 'id', required: true);
+    final id = c.catalogId(row);
     final wineryId = c.integer(row, 'winery_id', required: true);
     final name = c.text(row, 'name', required: true);
     final type = c.wineType(row);
@@ -126,7 +126,7 @@ CatalogBuild validateCatalog(Map<String, String> csvFiles, {DateTime? now}) {
   final vintageWine = <int, int>{};
   final wineYears = <(int, int)>{};
   for (final row in tables['vintages.csv']!) {
-    final id = c.integer(row, 'id', required: true);
+    final id = c.catalogId(row);
     final wineId = c.integer(row, 'wine_id', required: true);
     final year = c.integer(row, 'year', required: true);
     final abv = c.decimal(row, 'abv', max: 100);
@@ -364,6 +364,16 @@ class _Checker {
       error(row, '$column must be a whole number, got "$value"');
     }
     return number;
+  }
+
+  /// IDs from [myBottleIdBase] up are reserved for bottles added on phones.
+  int? catalogId(_Row row) {
+    final id = integer(row, 'id', required: true);
+    if (id != null && id >= myBottleIdBase) {
+      error(row, 'id must be below $myBottleIdBase');
+      return null;
+    }
+    return id;
   }
 
   /// Accepts a decimal comma ("13,5") as spreadsheets in Romanian use it.

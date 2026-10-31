@@ -16,7 +16,7 @@ Confirmed by Paul (project context v2, 2026-09-29):
 | 2026-09-29 | No accounts, no ratings or scores, no personal data, no analytics in the prototype |
 | 2026-09-29 | Recent scans stored on the device only |
 | 2026-09-29 | UI strings in localization files from day one |
-| 2026-09-29 | Stack: drift, mobile_scanner, google_mlkit_text_recognition |
+| 2026-09-29 | Stack: drift, mobile_scanner, google_mlkit_text_recognition (ML Kit replaced by Apple Vision, see below) |
 | 2026-09-30 | Data build script in Dart, reusing the app's schema and normalizer |
 
 Implementation choices (2026-09-30, open to change):
@@ -34,18 +34,29 @@ Implementation choices (2026-09-30, open to change):
 | Recent scans in a separate on-device DB, newest 50 | A catalogue swap must not touch user data |
 | Tech specs as nullable numbers with units in column names (`acidity_g_l`) | Not every winemaker publishes every value |
 | Grape varieties and food pairings as JSON string arrays | Ordered lists without extra join tables; enough for the prototype |
-| Developer scan test screen before the real UI, strings not localized | Test real bottles now; it is thrown away when the designed UI lands |
 | Bundled catalogue copied from the app bundle on every launch; app refuses a snapshot with another schema version | Simple for the prototype; fail closed instead of showing wrong data |
 | Build script fails on any error and writes via temp file + rename | Never ship a half-built or wrong catalogue |
 | Barcode scanning limited to linear formats | Bottles often carry a QR code next to the EAN |
 
-Known risks found while building (2026-09-30):
+App v1 for the 7 November 2026 expo (2026-10-30):
 
-- ML Kit text recognition has no Cyrillic model (scripts: Latin, Chinese,
-  Devanagari, Japanese, Korean). Russian-only labels cannot be read.
-- ML Kit ships a Google data-transport SDK on iOS that reports ML Kit usage
-  metrics to Google. Verify what is sent before production (privacy promise,
-  App Store privacy label).
-- The ML Kit Flutter plugins do not support Swift Package Manager yet; Flutter
-  warns this will become an error in a future version.
-- ML Kit does not run on the iOS Simulator on Apple Silicon; test on devices.
+| Decision | Why |
+|---|---|
+| Label reading uses Apple Vision through a small native channel, not ML Kit | Google's ML Kit collects device data and identifiers for analytics, which conflicts with "no personal data". Vision is on-device, reads Romanian and Cyrillic, and needs no third-party SDK |
+| iOS and iPhone only, portrait, English UI | The expo device; Android needs its own label reader |
+| "Scor Gustaro" from the Figma is left out | Confirmed rule: no scores anywhere, and no such data exists |
+| "Did you like it?" is kept, private to the phone, never shown as a score | It matches the design without creating a rating |
+| Bottles added in the app live in their own on-device database with IDs from 1,000,000,000 | They survive catalogue updates, scan immediately, and can't clash with catalogue IDs |
+| Added bottles are marked "Added by you · not verified" | Keeps the verified-data promise honest |
+| Added bottles' barcodes are tied to the year entered | A demo bottle opens straight to its page |
+| Request-this-wine is replaced by "Add this bottle" | With no backend, a request would go nowhere; open item stays open for production |
+| Sommelier and Explore are shown but marked upcoming | Requested design; AI sommelier stays parked |
+| Age gate (18+) and consent before first use | Alcohol content, App Store review |
+| Guided tasting is a real five-step guide with general advice | Replaces a dead button; not wine-specific data, so the catalogue promise is unaffected |
+| Fonts are bundled, not downloaded | The app makes no network requests |
+
+Known risks:
+
+- The expo catalogue must be filled with real bottles.
+- Barcode and camera flows need testing on a real iPhone; simulators have no camera.
+- Android: no label reading until an equivalent to Apple Vision is added.

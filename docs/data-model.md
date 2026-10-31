@@ -39,6 +39,11 @@ express, which the build script must validate:
 - every wine has at least one vintage;
 - codes are trimmed.
 
-On-device user data is a **separate** database (`UserDatabase`,
-`recent_scan(vintage_id, viewed_at)`, newest 50 kept) so replacing the
-catalogue never touches it.
+On-device data lives in **separate** databases, so replacing the catalogue
+never touches it:
+
+- `user.sqlite` (`UserDatabase`): `recent_scan(vintage_id, viewed_at, liked)`,
+  newest 50 kept, and `setting(key, value)`.
+- `my_bottles.sqlite` (`CatalogDatabase`): bottles added in the app, in the same
+  schema as the catalogue, with IDs from 1,000,000,000. The build script rejects
+  catalogue IDs in that range.

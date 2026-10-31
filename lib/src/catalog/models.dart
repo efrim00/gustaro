@@ -6,18 +6,27 @@ library;
 /// catalogue needs them; existing rows keep working.
 enum WineType { red, white, rose, orange, sparkling, dessert }
 
+/// IDs from here up belong to bottles added on the device. The bundled
+/// catalogue never reaches this range, so both can be merged without clashes.
+const int myBottleIdBase = 1000000000;
+
 final class WineSummary {
   const WineSummary({
     required this.id,
     required this.name,
     required this.wineryName,
     required this.type,
+    this.region,
   });
 
   final int id;
   final String name;
   final String wineryName;
   final WineType type;
+  final String? region;
+
+  /// False for bottles the user added: they did not come from a winemaker.
+  bool get isVerified => id < myBottleIdBase;
 }
 
 /// One verified vintage of a wine, as listed in the vintage picker.

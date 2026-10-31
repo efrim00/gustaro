@@ -195,6 +195,44 @@ async function commit(mutate, okMessage) {
   return true;
 }
 
+async function postPhoto(url, payload) {
+  let res, body;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    body = await res.json();
+  } catch (e) {
+    message('Could not reach the editor. Is it still running in the terminal?', [], true);
+    return false;
+  }
+  if (!res.ok) { message(body.error || 'Photo not saved.', [], true); return false; }
+  state.photos = body.photos;
+  return true;
+}
+
+/** Shrinks any picture to a JPEG of at most 1200 px and uploads it. */
+async function uploadPhoto(wineId, file) {
+  let bitmap;
+  try { bitmap = await createImageBitmap(file); }
+  catch (e) { message('That file is not a picture this browser can open.', [], true); return false; }
+  const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+  const data = await new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.readAsDataURL(blob);
+  });
+  const ok = await postPhoto('/api/photo', { wine_id: String(wineId), data });
+  if (ok) message('Photo saved, and copied into the app.');
+  return ok;
+}
+
 function message(text, list = [], isError = false) {
   const el = document.createElement('div');
   el.className = 'msg' + (isError ? ' err' : '');
@@ -287,6 +325,8 @@ function renderNewBottle() {
       <div class="field"><label for="nb-wine">Wine name (as on the label) *</label>
         <input id="nb-wine" list="nb-wine-list" autocomplete="off"><div class="hint" id="nb-wine-hint"></div></div>
     </div>
+    <div class="field"><label for="nb-photo">Bottle photo (optional)</label>
+      <input id="nb-photo" type="file" accept="image/*"><div class="hint">Shown in the app. You can also add or change it later on the wine's page.</div></div>
     <div id="nb-new-wine">
       <div class="row">
         <div class="field"><label for="nb-type">Type *</label>
@@ -389,6 +429,7 @@ async function saveNewBottle() {
   if (problems.length) return message('Not saved:', problems, true);
 
   const summary = [];
+  const photoFile = $('#nb-photo').files[0];
   const ok = await commit(T => {
     let wineryId = ctx.winery.match?.id;
     if (!wineryId) {
@@ -422,8 +463,12 @@ async function saveNewBottle() {
     }
     current = { kind: 'wine', id: wineId };
   }, `Added ${val('nb-wine')} ${val('nb-year')}.`);
-  if (!ok) current = { kind: 'new' };
-  else if (!summary.length) message('Nothing new: that bottle was already in the catalogue.');
+  if (!ok) {
+    current = { kind: 'new' };
+    return;
+  }
+  if (photoFile && await uploadPhoto(current.id, photoFile)) render();
+  if (!summary.length) message('Nothing new: that bottle was already in the catalogue.');
 }
 
 // ---------- winery ----------
@@ -487,6 +532,17 @@ function renderWine() {
   </div>
 
   <div class="card">
+    <h3>Photo</h3>
+    <p class="hint">Shown in the app on this wine's page and in lists. Any picture works; it is shrunk to fit. Use a straight-on photo of the bottle on a plain background.</p>
+    <div class="row" style="align-items:center">
+      ${(state.photos || []).includes(String(wine.id)) ? `<img src="/photo/${esc(wine.id)}?${Date.now()}" alt="" style="height:160px;max-width:200px;object-fit:contain;border:1px solid var(--line)">` : '<span class="empty">No photo yet.</span>'}
+      <div class="field"><label for="ph-file">${(state.photos || []).includes(String(wine.id)) ? 'Replace photo' : 'Add photo'}</label>
+        <input id="ph-file" type="file" accept="image/*"></div>
+      ${(state.photos || []).includes(String(wine.id)) ? '<button class="danger" id="ph-delete">Remove photo</button>' : ''}
+    </div>
+  </div>
+
+  <div class="card">
     <h3>Years</h3>
     ${vintages.length ? `<table><tr><th>Year</th><th>Alc.</th><th>Acid.</th><th>Tann.</th><th>Sugar</th><th>Sensory notes</th><th>Pairings</th><th></th></tr>
     ${vintages.map(v => {
@@ -509,6 +565,14 @@ function renderWine() {
   </div>`;
 
   $('#go-winery').onclick = () => { current = { kind: 'winery', id: wine.winery_id }; render(); };
+  $('#ph-file').onchange = async e => {
+    const file = e.target.files[0];
+    if (file && await uploadPhoto(wine.id, file)) render();
+  };
+  if ($('#ph-delete')) $('#ph-delete').onclick = async () => {
+    const ok = await postPhoto('/api/photo/delete', { wine_id: String(wine.id) });
+    if (ok) { message('Photo removed.'); render(); }
+  };
   $('#wn-save').onclick = () => commit(T => {
     Object.assign(wineById(T, wine.id), {
       name: val('wn-name'), type: val('wn-type'),

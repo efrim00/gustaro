@@ -136,6 +136,12 @@ void main() {
       }, 'winery_id 9 does not exist');
     });
 
+    test('id in the range reserved for on-device bottles', () {
+      expectError({
+        'wineries.csv': 'id,name,region\n1000000000,A,\n',
+      }, 'id must be below');
+    });
+
     test('duplicate id', () {
       expectError({
         'wineries.csv': 'id,name,region\n1,A,\n1,B,\n',

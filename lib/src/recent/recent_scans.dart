@@ -4,12 +4,22 @@ part 'recent_scans.g.dart';
 
 /// On-device user data, kept separate from the catalogue so a catalogue
 /// swap never touches it. Nothing here leaves the device.
-@DriftDatabase(tables: [RecentScanTable])
+@DriftDatabase(tables: [RecentScanTable, SettingTable])
 class UserDatabase extends _$UserDatabase {
   UserDatabase(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(recentScanTable, recentScanTable.liked);
+        await m.createTable(settingTable);
+      }
+    },
+  );
 }
 
 @DataClassName('RecentScanRow')
@@ -21,15 +31,36 @@ class RecentScanTable extends Table {
   IntColumn get vintageId => integer()();
   DateTimeColumn get viewedAt => dateTime()();
 
+  /// The user's own answer to "Did you like it?"; null until answered. Stays
+  /// on the device and is never shown as a score.
+  BoolColumn get liked => boolean().nullable()();
+
   @override
   Set<Column> get primaryKey => {vintageId};
 }
 
+@DataClassName('SettingRow')
+class SettingTable extends Table {
+  @override
+  String get tableName => 'setting';
+
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
 final class RecentScan {
-  const RecentScan({required this.vintageId, required this.viewedAt});
+  const RecentScan({
+    required this.vintageId,
+    required this.viewedAt,
+    this.liked,
+  });
 
   final int vintageId;
   final DateTime viewedAt;
+  final bool? liked;
 }
 
 /// Most recently viewed results, newest first, one entry per vintage.
@@ -46,10 +77,14 @@ class RecentScansStore {
   Future<void> record(int vintageId) => _db.transaction(() async {
     await _db
         .into(_db.recentScanTable)
-        .insertOnConflictUpdate(
+        .insert(
           RecentScanTableCompanion.insert(
             vintageId: Value(vintageId),
             viewedAt: _clock(),
+          ),
+          // Keeps the user's "liked" answer when a wine is viewed again.
+          onConflict: DoUpdate(
+            (_) => RecentScanTableCompanion(viewedAt: Value(_clock())),
           ),
         );
     final keep = _db.selectOnly(_db.recentScanTable)
@@ -67,9 +102,44 @@ class RecentScansStore {
     )..orderBy([(t) => OrderingTerm.desc(t.viewedAt)])).get();
     return [
       for (final row in rows)
-        RecentScan(vintageId: row.vintageId, viewedAt: row.viewedAt),
+        RecentScan(
+          vintageId: row.vintageId,
+          viewedAt: row.viewedAt,
+          liked: row.liked,
+        ),
     ];
   }
 
+  Future<void> setLiked(int vintageId, bool? liked) =>
+      (_db.update(_db.recentScanTable)
+            ..where((t) => t.vintageId.equals(vintageId)))
+          .write(RecentScanTableCompanion(liked: Value(liked)));
+
+  Future<void> remove(int vintageId) => (_db.delete(
+    _db.recentScanTable,
+  )..where((t) => t.vintageId.equals(vintageId))).go();
+
   Future<void> clear() => _db.delete(_db.recentScanTable).go();
+}
+
+/// Small key/value settings kept on the device.
+class SettingsStore {
+  SettingsStore(this._db);
+
+  final UserDatabase _db;
+
+  Future<String?> read(String key) async {
+    final row = await (_db.select(
+      _db.settingTable,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
+    return row?.value;
+  }
+
+  Future<void> write(String key, String value) => _db
+      .into(_db.settingTable)
+      .insertOnConflictUpdate(
+        SettingTableCompanion.insert(key: key, value: value),
+      );
+
+  Future<void> clear() => _db.delete(_db.settingTable).go();
 }

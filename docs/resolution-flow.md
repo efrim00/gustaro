@@ -53,12 +53,12 @@ exhaustiveness by the compiler.
 
 All tuning values are in `LabelMatchConfig`; tune them on the real bottles.
 
-## Not in this layer
+## Around this layer
 
-- The "no barcode after a few seconds → offer label scan" timeout belongs to
-  the camera screen (it depends on the camera plugin's stream). Tune on real
-  bottles.
-- Camera (`mobile_scanner`, linear barcode formats only so a QR code is not
-  read first) and OCR (`google_mlkit_text_recognition`, Latin script) are
-  wired in the developer test screen `lib/app/scan_test_screen.dart`; they
-  only produce a string for `ScanService`.
+- `lib/app/screens/scan_screen.dart` owns the camera. It accepts linear barcode
+  formats only (so a QR code is not read first), suggests the label after 6
+  seconds, and offers typing the code as a fallback.
+- Label text comes from Apple Vision (`ios/Runner/AppDelegate.swift`), on the device.
+- `lib/app/flows.dart` turns a `ScanOutcome` into the right screen or sheet.
+- `CombinedCatalog` merges the bundled catalogue with bottles added on the phone,
+  so every step above treats them the same way.

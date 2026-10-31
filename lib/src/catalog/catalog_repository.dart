@@ -3,8 +3,17 @@ import 'package:drift/drift.dart';
 import 'catalog_database.dart';
 import 'models.dart';
 
-/// Read-only queries over the bundled catalogue. Returns domain models only.
-class CatalogRepository {
+/// What the scan flow and screens need to read wines, wherever they live.
+abstract interface class CatalogReader {
+  Future<List<BarcodeHit>> findBarcodes(Set<String> codes);
+  Future<Map<int, List<VintageOption>>> vintagesOf(Set<int> wineIds);
+  Future<List<LabelIndexEntry>> labelIndex();
+  Future<VintageDetails?> vintageDetails(int vintageId, {String language});
+  Future<Map<int, VintageSummary>> vintageSummaries(Set<int> vintageIds);
+}
+
+/// Read-only queries over one catalogue database. Returns domain models only.
+class CatalogRepository implements CatalogReader {
   CatalogRepository(this._db);
 
   final CatalogDatabase _db;
@@ -12,6 +21,7 @@ class CatalogRepository {
   /// Language used when a text is missing in the requested one.
   static const String fallbackLanguage = 'ro';
 
+  @override
   Future<List<BarcodeHit>> findBarcodes(Set<String> codes) async {
     if (codes.isEmpty) return const [];
     final b = _db.barcodeTable;
@@ -31,6 +41,7 @@ class CatalogRepository {
 
   /// Verified vintages per wine, newest first. Wines without vintages are
   /// absent from the map.
+  @override
   Future<Map<int, List<VintageOption>>> vintagesOf(Set<int> wineIds) async {
     if (wineIds.isEmpty) return const {};
     final v = _db.vintageTable;
@@ -49,6 +60,7 @@ class CatalogRepository {
   }
 
   /// Every wine with at least one verified vintage, for label matching.
+  @override
   Future<List<LabelIndexEntry>> labelIndex() async {
     final w = _db.wineTable;
     final query = _db.select(w).join([
@@ -65,6 +77,7 @@ class CatalogRepository {
 
   /// Full data for the result screen, texts in [language] with a fallback
   /// to Romanian per field group. Null if the vintage does not exist.
+  @override
   Future<VintageDetails?> vintageDetails(
     int vintageId, {
     String language = fallbackLanguage,
@@ -109,6 +122,7 @@ class CatalogRepository {
 
   /// Summaries for the given vintage IDs. IDs that no longer exist in the
   /// catalogue are silently absent.
+  @override
   Future<Map<int, VintageSummary>> vintageSummaries(Set<int> vintageIds) async {
     if (vintageIds.isEmpty) return const {};
     final v = _db.vintageTable;
@@ -143,6 +157,7 @@ class CatalogRepository {
       name: wine.name,
       wineryName: row.readTable(_db.wineryTable).name,
       type: wine.type,
+      region: row.readTable(_db.wineryTable).region,
     );
   }
 

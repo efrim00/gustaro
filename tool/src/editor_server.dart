@@ -9,12 +9,18 @@ import 'catalog_files.dart';
 /// every save; a few thousand wines are well under 1 MB).
 const _maxBodyBytes = 10 * 1024 * 1024;
 
+/// A bottle photo bigger than this is refused (the page shrinks them first).
+const _maxPhotoBytes = 3 * 1024 * 1024;
+
 /// Local catalogue editor: serves the page and a small JSON API over the
 /// CSV files in [dataDir]. Listens on 127.0.0.1 only.
 ///
 /// - GET  /              the editor page ([htmlFile])
 /// - GET  /api/catalog   all tables, a version, validation errors/warnings
 /// - POST /api/save      replace all tables; validated, saved, catalogue rebuilt
+/// - GET  /photo/`id`    a wine's photo (`data/photos/id.jpg`)
+/// - POST /api/photo     set a wine's photo (base64 JPEG); copied to the app
+/// - POST /api/photo/delete  remove a wine's photo
 Future<HttpServer> startEditorServer({
   required String dataDir,
   required String outPath,
@@ -72,9 +78,19 @@ Future<void> _handle(
       response.write(await htmlFile.readAsString());
       await response.close();
     case ('GET', '/api/catalog'):
-      await _json(response, 200, _catalogPayload(CatalogFiles.load(dataDir)));
+      await _json(
+        response,
+        200,
+        _catalogPayload(CatalogFiles.load(dataDir), dataDir),
+      );
     case ('POST', '/api/save'):
       await _save(request, dataDir, outPath);
+    case ('POST', '/api/photo'):
+      await _setPhoto(request, dataDir, outPath);
+    case ('POST', '/api/photo/delete'):
+      await _deletePhoto(request, dataDir, outPath);
+    case ('GET', final path) when path.startsWith('/photo/'):
+      await _servePhoto(response, dataDir, path.substring(7));
     default:
       await _json(response, 404, {'error': 'Not found.'});
   }
@@ -133,17 +149,23 @@ Future<void> _save(HttpRequest request, String dataDir, String outPath) async {
     return _json(response, 422, {'errors': build.errors});
   }
   files.save(dataDir);
+  syncPhotos(dataDir, outPath, files);
   if (!await buildCatalogFile(dataDir, outPath)) {
     return _json(response, 500, {
       'error': 'Saved, but rebuilding failed; see terminal.',
     });
   }
-  await _json(response, 200, _catalogPayload(CatalogFiles.load(dataDir)));
+  await _json(
+    response,
+    200,
+    _catalogPayload(CatalogFiles.load(dataDir), dataDir),
+  );
 }
 
-Map<String, Object> _catalogPayload(CatalogFiles files) {
+Map<String, Object> _catalogPayload(CatalogFiles files, [String? dataDir]) {
   final build = validateCatalog(files.toCsvStrings());
   return {
+    if (dataDir != null) 'photos': _photoIds(dataDir),
     'version': _version(files),
     'tables': {
       for (final MapEntry(key: name, value: table) in files.tables.entries)
@@ -181,5 +203,128 @@ Future<void> _json(HttpResponse response, int status, Object body) async {
     ..headers.contentType = ContentType.json
     ..headers.set('Cache-Control', 'no-store')
     ..write(jsonEncode(body));
+  await response.close();
+}
+
+// ---------- photos ----------
+
+String _photosDir(String dataDir) => '$dataDir/photos';
+String _appPhotosDir(String outPath) => '${File(outPath).parent.path}/photos';
+
+/// Ids of wines that have a photo in the data folder.
+List<String> _photoIds(String dataDir) {
+  final dir = Directory(_photosDir(dataDir));
+  if (!dir.existsSync()) return [];
+  return [
+    for (final file in dir.listSync().whereType<File>())
+      if (RegExp(r'^\d+\.jpg$').hasMatch(file.uri.pathSegments.last))
+        file.uri.pathSegments.last.replaceFirst('.jpg', ''),
+  ]..sort();
+}
+
+/// Makes the app's photo folder match the data folder: photos of wines that
+/// exist are copied, all others removed.
+void syncPhotos(String dataDir, String outPath, CatalogFiles files) {
+  final wineIds = {for (final w in files.records('wines.csv')) w['id']};
+  final source = _photosDir(dataDir);
+  final target = Directory(_appPhotosDir(outPath))..createSync(recursive: true);
+  for (final id in _photoIds(dataDir)) {
+    if (wineIds.contains(id)) {
+      File('$source/$id.jpg').copySync('${target.path}/$id.jpg');
+    } else {
+      File('$source/$id.jpg').deleteSync();
+    }
+  }
+  final kept = _photoIds(dataDir).toSet();
+  for (final file in target.listSync().whereType<File>()) {
+    final name = file.uri.pathSegments.last;
+    if (name.endsWith('.jpg') &&
+        !kept.contains(name.replaceFirst('.jpg', ''))) {
+      file.deleteSync();
+    }
+  }
+}
+
+/// The wine id from a request, only if it is a plain number of a known wine
+/// (so it can never be a path).
+String? _knownWineId(Object? value, String dataDir) {
+  if (value is! String || !RegExp(r'^\d{1,9}$').hasMatch(value)) return null;
+  final files = CatalogFiles.load(dataDir);
+  return files.records('wines.csv').any((w) => w['id'] == value) ? value : null;
+}
+
+Future<Map<String, dynamic>?> _readJsonObject(HttpRequest request) async {
+  try {
+    final body = jsonDecode(await _readBody(request));
+    return body is Map<String, dynamic> ? body : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+Future<void> _setPhoto(
+  HttpRequest request,
+  String dataDir,
+  String outPath,
+) async {
+  final response = request.response;
+  final body = await _readJsonObject(request);
+  final id = _knownWineId(body?['wine_id'], dataDir);
+  final data = body?['data'];
+  if (body == null || id == null || data is! String) {
+    return _json(response, 400, {'error': 'Invalid request.'});
+  }
+  final List<int> bytes;
+  try {
+    bytes = base64Decode(data);
+  } on FormatException {
+    return _json(response, 400, {'error': 'Invalid image.'});
+  }
+  if (bytes.length > _maxPhotoBytes) {
+    return _json(response, 413, {'error': 'The photo is too large.'});
+  }
+  // Only JPEG, which the page produces from any picture it is given.
+  if (bytes.length < 4 ||
+      bytes[0] != 0xFF ||
+      bytes[1] != 0xD8 ||
+      bytes[2] != 0xFF) {
+    return _json(response, 415, {'error': 'Expected a JPEG image.'});
+  }
+  Directory(_photosDir(dataDir)).createSync(recursive: true);
+  File('${_photosDir(dataDir)}/$id.jpg').writeAsBytesSync(bytes);
+  syncPhotos(dataDir, outPath, CatalogFiles.load(dataDir));
+  await _json(response, 200, {'photos': _photoIds(dataDir)});
+}
+
+Future<void> _deletePhoto(
+  HttpRequest request,
+  String dataDir,
+  String outPath,
+) async {
+  final response = request.response;
+  final body = await _readJsonObject(request);
+  final id = _knownWineId(body?['wine_id'], dataDir);
+  if (id == null) return _json(response, 400, {'error': 'Invalid request.'});
+  final file = File('${_photosDir(dataDir)}/$id.jpg');
+  if (file.existsSync()) file.deleteSync();
+  syncPhotos(dataDir, outPath, CatalogFiles.load(dataDir));
+  await _json(response, 200, {'photos': _photoIds(dataDir)});
+}
+
+Future<void> _servePhoto(
+  HttpResponse response,
+  String dataDir,
+  String name,
+) async {
+  final id = RegExp(r'^\d{1,9}$').hasMatch(name) ? name : null;
+  final file = id == null ? null : File('${_photosDir(dataDir)}/$id.jpg');
+  if (file == null || !file.existsSync()) {
+    return _json(response, 404, {'error': 'Not found.'});
+  }
+  response.headers
+    ..contentType = ContentType('image', 'jpeg')
+    ..set('Cache-Control', 'no-store')
+    ..set('X-Content-Type-Options', 'nosniff');
+  response.add(file.readAsBytesSync());
   await response.close();
 }

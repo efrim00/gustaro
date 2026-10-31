@@ -23,6 +23,19 @@ terminal). It runs only on your Mac and only your Mac can open it.
 
 After changes, reinstall the app on the phone.
 
+### Bottle photos
+
+Every wine can have one photo. In the editor, add it on the **New bottle** form
+or on the wine's page (**Photo**). Any picture works: the page shrinks it to a
+JPEG. The original goes to `data/photos/<wine id>.jpg` (keep this folder in
+git) and a copy to `assets/photos/<wine id>.jpg`, which the app bundles.
+Reinstall the app to see new photos. Use a straight-on picture on a plain
+background. Wines without a photo show the bottle drawing. Photos of wines
+that are deleted are removed automatically.
+
+In the app, bottles added on a phone can have a photo too (Add a wine bottle >
+Photo); it stays on that phone.
+
 ## In the terminal: the bottle wizard
 
 ```bash

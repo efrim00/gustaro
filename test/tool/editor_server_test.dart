@@ -224,6 +224,87 @@ void main() {
     });
   });
 
+  group('photos', () {
+    final jpeg = base64Encode([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]);
+
+    Future<void> saveBottle() async {
+      final (_, catalog) = await send('GET', '/api/catalog');
+      expect(
+        (await send('POST', '/api/save', body: oneBottle(catalog))).$1,
+        200,
+      );
+    }
+
+    test('are stored, copied into the app folder and removed again', () async {
+      await saveBottle();
+      final (status, body) = await send(
+        'POST',
+        '/api/photo',
+        body: {'wine_id': '1', 'data': jpeg},
+      );
+      expect(status, 200);
+      expect(body['photos'], ['1']);
+      expect(File('$dataDir/photos/1.jpg').existsSync(), isTrue);
+      expect(File('${tmp.path}/photos/1.jpg').existsSync(), isTrue);
+      expect((await send('GET', '/api/catalog')).$2['photos'], ['1']);
+
+      await send('POST', '/api/photo/delete', body: {'wine_id': '1'});
+      expect(File('$dataDir/photos/1.jpg').existsSync(), isFalse);
+      expect(File('${tmp.path}/photos/1.jpg').existsSync(), isFalse);
+    });
+
+    test('are refused for unknown wines, paths and non-JPEG data', () async {
+      await saveBottle();
+      for (final id in ['2', '../1', '1/../../x', '']) {
+        final (status, _) = await send(
+          'POST',
+          '/api/photo',
+          body: {'wine_id': id, 'data': jpeg},
+        );
+        expect(status, 400, reason: id);
+      }
+      final (status, _) = await send(
+        'POST',
+        '/api/photo',
+        body: {
+          'wine_id': '1',
+          'data': base64Encode([1, 2, 3, 4, 5]),
+        },
+      );
+      expect(status, 415);
+      expect(Directory('$dataDir/photos').existsSync(), isFalse);
+    });
+
+    test('are removed when their wine is deleted', () async {
+      await saveBottle();
+      await send('POST', '/api/photo', body: {'wine_id': '1', 'data': jpeg});
+      final (_, catalog) = await send('GET', '/api/catalog');
+      final empty = {
+        'version': catalog['version'],
+        'tables': {for (final name in catalogFiles.keys) name: <Object>[]},
+      };
+      expect((await send('POST', '/api/save', body: empty)).$1, 200);
+      expect(File('${tmp.path}/photos/1.jpg').existsSync(), isFalse);
+    });
+
+    test('are served by number only', () async {
+      await saveBottle();
+      await send('POST', '/api/photo', body: {'wine_id': '1', 'data': jpeg});
+      final request = await client.open(
+        'GET',
+        '127.0.0.1',
+        server.port,
+        '/photo/1',
+      );
+      request.headers.host = 'localhost';
+      final response = await request.close();
+      expect(response.statusCode, 200);
+      expect(response.headers.contentType?.mimeType, 'image/jpeg');
+      await response.drain<void>();
+      expect((await send('GET', '/photo/..%2Fwines.csv')).$1, 404);
+    });
+  });
+
   test('unknown paths are 404, not files from disk', () async {
     expect((await send('GET', '/../data/wines.csv')).$1, 404);
     expect((await send('GET', '/tool/editor/index.html')).$1, 404);
