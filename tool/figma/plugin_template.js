@@ -14,6 +14,8 @@ const L = (key, vars = {}) => {
   return s;
 };
 const V = {}, TS = {}, C = {};
+const problems = [];
+const step = (name, fn) => { try { fn(); } catch (e) { problems.push(name + ': ' + e.message); } };
 const paint = (name, opacity) => figma.variables.setBoundVariableForPaint(
   { type: 'SOLID', color: { r: 0, g: 0, b: 0 }, ...(opacity != null ? { opacity } : {}) }, 'color', V[name]);
 // Text styles cannot be set directly in a plugin (Figma needs the async call),
@@ -36,7 +38,13 @@ const T = (chars, style, color = 'ink', o = {}) => {
   if (!o.size && !o.lh && !o.underline) PENDING.push([t, d.id]);
   return t;
 };
-const AL = (dir, props = {}) => { const f = figma.createAutoLayout(dir); f.fills = []; f.set(props); return f; };
+// An auto-layout frame (figma.createAutoLayout and node.set do not exist in the plugin API).
+const newAL = dir => {
+  const f = figma.createFrame();
+  f.layoutMode = dir; f.primaryAxisSizingMode = 'AUTO'; f.counterAxisSizingMode = 'AUTO';
+  return f;
+};
+const AL = (dir, props = {}) => { const f = newAL(dir); f.fills = []; Object.assign(f, props); return f; };
 const gap = h => { const r = figma.createFrame(); r.name = 'Spacer'; r.resize(1, h); r.fills = []; return r; };
 const fill = n => { n.layoutSizingHorizontal = 'FILL'; return n; };
 const wrapText = t => { t.layoutSizingHorizontal = 'FILL'; t.textAutoResize = 'HEIGHT'; return t; };
@@ -106,9 +114,10 @@ async function foundations() {
 }
 
 // ---------- components ----------
-async function makeComponents(board) {
+function makeComponents(board) {
   const add = n => { board.appendChild(n); return n; };
 
+  step('icons and logos', () => {
   // icons, logos and patterns come from the app's own SVG files
   for (const [name, svg] of Object.entries(DATA.svgs)) {
     const frame = figma.createNodeFromSvg(svg);
@@ -118,7 +127,9 @@ async function makeComponents(board) {
     add(c);
     C[name] = c;
   }
+  });
 
+  step('Buttons', () => {
   // Buttons
   const buttonSpecs = [['Primary', 'red', 'white', null], ['Dark', 'ink', 'white', null], ['Outline', 'white', 'ink', 'ink'], ['On red', 'white', 'ink', null], ['Disabled', 'line', 'text-muted', null]];
   const buttons = [];
@@ -140,7 +151,9 @@ async function makeComponents(board) {
   buttonSet.layoutMode = 'VERTICAL'; buttonSet.itemSpacing = 12;
   buttonSet.paddingLeft = buttonSet.paddingRight = buttonSet.paddingTop = buttonSet.paddingBottom = 16;
   C['Button'] = buttonSet;
+  });
 
+  step('Round buttons', () => {
   // Round buttons
   const mkRound = (name, size, bg, stroke, iconName, iconSize) => {
     const r = figma.createComponent(); r.name = name;
@@ -161,7 +174,9 @@ async function makeComponents(board) {
   roundSet.layoutMode = 'HORIZONTAL'; roundSet.itemSpacing = 16; roundSet.counterAxisAlignItems = 'CENTER';
   roundSet.paddingLeft = roundSet.paddingRight = roundSet.paddingTop = roundSet.paddingBottom = 16;
   C['Round button'] = roundSet;
+  });
 
+  step('Bottle art', () => {
   // Bottle art: the bottle silhouette with the Gustaro mark
   const bottle = figma.createComponent(); bottle.name = 'Bottle art';
   bottle.resize(116, 128); bottle.fills = []; bottle.clipsContent = false;
@@ -178,7 +193,9 @@ async function makeComponents(board) {
   mark.x = (116 - w * 0.5) / 2; mark.y = h * 0.65 - w * 0.25;
   for (const n of [glow, body, mark]) n.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
   add(bottle); C['Bottle art'] = bottle;
+  });
 
+  step('Status bar', () => {
   // Status bar
   const sb = figma.createComponent(); sb.name = 'Status bar'; sb.resize(440, 62); sb.fills = [];
   sb.layoutMode = 'HORIZONTAL'; sb.primaryAxisSizingMode = 'FIXED'; sb.counterAxisSizingMode = 'FIXED';
@@ -191,7 +208,9 @@ async function makeComponents(board) {
   const bat = figma.createRectangle(); bat.name = 'Battery'; bat.resize(26, 12); bat.cornerRadius = 3.5; bat.fills = [paint('ink')];
   right.appendChild(bars); right.appendChild(bat); sb.appendChild(right);
   add(sb); C['Status bar'] = sb;
+  });
 
+  step('Tab bar', () => {
   // Tab bar (one variant per active tab)
   const tabs = [['Home', 'nav-home', L('navHome')], ['Explore', 'nav-explore', L('navExplore')], ['Wines', 'nav-wines', L('navWines')], ['More', 'nav-more', L('navMore')]];
   const bars2 = [];
@@ -206,7 +225,7 @@ async function makeComponents(board) {
       row.appendChild(tab); fill(tab); tab.resize(tab.width, 56); tab.layoutSizingVertical = 'FIXED';
       tab.appendChild(icon(ic, 22, color)); tab.appendChild(T(label, 'Label', color));
     }
-    const cam = figma.createAutoLayout('HORIZONTAL'); cam.name = 'Scan'; cam.resize(56, 56); cam.cornerRadius = 28; cam.fills = [paint('red')];
+    const cam = newAL('HORIZONTAL'); cam.name = 'Scan'; cam.resize(56, 56); cam.cornerRadius = 28; cam.fills = [paint('red')];
     cam.primaryAxisAlignItems = 'CENTER'; cam.counterAxisAlignItems = 'CENTER'; cam.primaryAxisSizingMode = 'FIXED'; cam.counterAxisSizingMode = 'FIXED';
     row.appendChild(cam); cam.appendChild(icon('camera', 26, 'white'));
     bars2.push(bar);
@@ -215,7 +234,9 @@ async function makeComponents(board) {
   tabSet.layoutMode = 'VERTICAL'; tabSet.itemSpacing = 16;
   tabSet.paddingLeft = tabSet.paddingRight = tabSet.paddingTop = tabSet.paddingBottom = 16;
   C['Tab bar'] = tabSet;
+  });
 
+  step('App bar', () => {
   // App bar
   const ab = figma.createComponent(); ab.name = 'App bar'; ab.resize(440, 56); ab.fills = [];
   const backI = icon('back'); backI.name = 'Back'; ab.appendChild(backI); backI.x = 16; backI.y = 16;
@@ -224,13 +245,15 @@ async function makeComponents(board) {
   const tp = ab.addComponentProperty('Title', 'TEXT', 'Title'); title.componentPropertyReferences = { characters: tp };
   const bp = ab.addComponentProperty('Back', 'BOOLEAN', true); backI.componentPropertyReferences = { visible: bp };
   add(ab); C['App bar'] = ab;
+  });
 
+  step('Wine row', () => {
   // Wine row
   const wr = figma.createComponent(); wr.name = 'Wine row';
   wr.layoutMode = 'HORIZONTAL'; wr.counterAxisAlignItems = 'CENTER'; wr.itemSpacing = 12; wr.paddingTop = wr.paddingBottom = 12;
   wr.resize(400, 88); wr.primaryAxisSizingMode = 'FIXED'; wr.fills = []; border(wr, 'b', 'line');
   const holder = figma.createFrame(); holder.name = 'Photo'; holder.resize(52, 64); holder.fills = []; holder.clipsContent = false;
-  const bi = bottle.createInstance(); bi.rescale(0.5); holder.appendChild(bi); bi.x = (52 - bi.width) / 2; bi.y = 0;
+  const bi = comp('Bottle art').createInstance(); bi.rescale(0.5); holder.appendChild(bi); bi.x = (52 - bi.width) / 2; bi.y = 0;
   const gi = bi.findOne(n => n.name === 'Glow'); if (gi) gi.visible = false;
   wr.appendChild(holder);
   const col = AL('VERTICAL', { name: 'Text', itemSpacing: 1 }); wr.appendChild(col); fill(col);
@@ -241,7 +264,9 @@ async function makeComponents(board) {
   tn.componentPropertyReferences = { characters: wr.addComponentProperty('Wine', 'TEXT', 'Wine') };
   td.componentPropertyReferences = { characters: wr.addComponentProperty('Details', 'TEXT', 'Details') };
   add(wr); C['Wine row'] = wr;
+  });
 
+  step('Chip', () => {
   // Chip
   const chips = [];
   for (const sel of ['Yes', 'No']) {
@@ -257,7 +282,9 @@ async function makeComponents(board) {
   chipSet.layoutMode = 'HORIZONTAL'; chipSet.itemSpacing = 12;
   chipSet.paddingLeft = chipSet.paddingRight = chipSet.paddingTop = chipSet.paddingBottom = 16;
   C['Chip'] = chipSet;
+  });
 
+  step('Field', () => {
   // Field
   const fd = figma.createComponent(); fd.name = 'Field';
   fd.layoutMode = 'VERTICAL'; fd.itemSpacing = 6; fd.resize(400, 80); fd.primaryAxisSizingMode = 'AUTO'; fd.counterAxisSizingMode = 'FIXED'; fd.fills = [];
@@ -271,7 +298,9 @@ async function makeComponents(board) {
   fv.componentPropertyReferences = { characters: fd.addComponentProperty('Value', 'TEXT', 'Value') };
   fh.componentPropertyReferences = { characters: fd.addComponentProperty('Helper', 'TEXT', 'Helper text'), visible: fd.addComponentProperty('Show helper', 'BOOLEAN', false) };
   add(fd); C['Field'] = fd;
+  });
 
+  step('List row', () => {
   // List row (More)
   const lr = figma.createComponent(); lr.name = 'List row';
   lr.layoutMode = 'HORIZONTAL'; lr.counterAxisAlignItems = 'CENTER'; lr.itemSpacing = 16;
@@ -284,7 +313,9 @@ async function makeComponents(board) {
   lt.componentPropertyReferences = { characters: lr.addComponentProperty('Label', 'TEXT', 'Row') };
   lv.componentPropertyReferences = { characters: lr.addComponentProperty('Value', 'TEXT', ' ') };
   add(lr); C['List row'] = lr;
+  });
 
+  step('Tag', () => {
   // Tag
   const tg = figma.createComponent(); tg.name = 'Tag';
   tg.layoutMode = 'HORIZONTAL'; tg.paddingLeft = tg.paddingRight = 10; tg.paddingTop = tg.paddingBottom = 6;
@@ -292,7 +323,9 @@ async function makeComponents(board) {
   const tgt = T('Label', 'Label', 'white'); tg.appendChild(tgt);
   tgt.componentPropertyReferences = { characters: tg.addComponentProperty('Label', 'TEXT', 'Label') };
   add(tg); C['Tag'] = tg;
+  });
 
+  step('Spec tile', () => {
   // Spec tile
   const st = figma.createComponent(); st.name = 'Spec tile';
   st.layoutMode = 'VERTICAL'; st.itemSpacing = 2; st.paddingLeft = st.paddingRight = 14; st.paddingTop = st.paddingBottom = 12;
@@ -301,6 +334,7 @@ async function makeComponents(board) {
   stl.componentPropertyReferences = { characters: st.addComponentProperty('Label', 'TEXT', 'Label') };
   stv.componentPropertyReferences = { characters: st.addComponentProperty('Value', 'TEXT', 'Value') };
   add(st); C['Spec tile'] = st;
+  });
 }
 
 // ---------- screen helpers ----------
@@ -495,7 +529,7 @@ function home() {
   names.appendChild(T('Crama Țărăncuța', 'Body', 'text-soft'));
   names.appendChild(wrapText(T('Fetească Neagră 2020', 'Card title', 'ink', { size: 22 })));
   names.appendChild(T('Red · Codru, Moldova', 'Body', 'text-muted'));
-  const like = AL('VERTICAL', { name: 'Did you like it', padding: 14, itemSpacing: 12 }); like.paddingLeft = like.paddingRight = like.paddingTop = like.paddingBottom = 14;
+  const like = AL('VERTICAL', { name: 'Did you like it', itemSpacing: 12 }); like.paddingLeft = like.paddingRight = like.paddingTop = like.paddingBottom = 14;
   like.counterAxisAlignItems = 'CENTER'; border(like, 't'); card.appendChild(like); fill(like);
   like.appendChild(T(L('feedbackQuestion'), 'Button', 'ink'));
   const ans = AL('HORIZONTAL', { name: 'Answers', itemSpacing: 8 }); like.appendChild(ans); fill(ans);
@@ -525,7 +559,7 @@ function home() {
   const ask = AL('HORIZONTAL', { name: 'Ask field', paddingLeft: 18, paddingRight: 8, itemSpacing: 14 }); ask.counterAxisAlignItems = 'CENTER';
   som.appendChild(ask); fill(ask); ask.resize(ask.width, 60); ask.layoutSizingVertical = 'FIXED'; box(ask, 'ink');
   ask.appendChild(icon('sparkle-small', 18, 'red')); const ap = T(L('sommelierInput'), 'Body', 'text-muted'); ask.appendChild(ap); fill(ap);
-  const send = figma.createAutoLayout('HORIZONTAL'); send.name = 'Send'; send.primaryAxisAlignItems = 'CENTER'; send.counterAxisAlignItems = 'CENTER';
+  const send = newAL('HORIZONTAL'); send.name = 'Send'; send.primaryAxisAlignItems = 'CENTER'; send.counterAxisAlignItems = 'CENTER';
   send.resize(44, 44); send.primaryAxisSizingMode = 'FIXED'; send.counterAxisSizingMode = 'FIXED'; send.cornerRadius = 22; send.fills = [paint('ink')];
   ask.appendChild(send); send.appendChild(icon('send', 18, 'white'));
   c.appendChild(gap(34));
@@ -607,7 +641,7 @@ function more() {
   const c = content(s);
   c.appendChild(gap(10)); title(c, L('moreTitle'), 28); c.appendChild(gap(14));
   const guest = AL('HORIZONTAL', { name: 'Guest', itemSpacing: 14 }); guest.counterAxisAlignItems = 'CENTER'; c.appendChild(guest); fill(guest);
-  const av = figma.createAutoLayout('HORIZONTAL'); av.name = 'Avatar'; av.primaryAxisAlignItems = 'CENTER'; av.counterAxisAlignItems = 'CENTER';
+  const av = newAL('HORIZONTAL'); av.name = 'Avatar'; av.primaryAxisAlignItems = 'CENTER'; av.counterAxisAlignItems = 'CENTER';
   av.resize(56, 56); av.primaryAxisSizingMode = 'FIXED'; av.counterAxisSizingMode = 'FIXED'; av.cornerRadius = 28; av.fills = [paint('ink')];
   guest.appendChild(av); av.appendChild(icon('person', 26, 'white'));
   const gt = AL('VERTICAL', { name: 'Text', itemSpacing: 2 }); guest.appendChild(gt); fill(gt);
@@ -615,7 +649,7 @@ function more() {
   c.appendChild(gap(18));
   const add = AL('HORIZONTAL', { name: L('moreAddBottle'), paddingLeft: 14, paddingRight: 16, paddingTop: 18, paddingBottom: 18, itemSpacing: 14 });
   add.counterAxisAlignItems = 'CENTER'; add.fills = [paint('red')]; c.appendChild(add); fill(add);
-  const pb = figma.createAutoLayout('HORIZONTAL'); pb.name = 'Plus'; pb.primaryAxisAlignItems = 'CENTER'; pb.counterAxisAlignItems = 'CENTER';
+  const pb = newAL('HORIZONTAL'); pb.name = 'Plus'; pb.primaryAxisAlignItems = 'CENTER'; pb.counterAxisAlignItems = 'CENTER';
   pb.resize(44, 44); pb.primaryAxisSizingMode = 'FIXED'; pb.counterAxisSizingMode = 'FIXED'; pb.fills = [paint('white')];
   add.appendChild(pb); pb.appendChild(icon('plus-large', 26));
   const at = AL('VERTICAL', { name: 'Text', itemSpacing: 2 }); add.appendChild(at); fill(at);
@@ -728,7 +762,7 @@ function scanChrome(s, hint, primaryIsLabel) {
   row.primaryAxisAlignItems = 'SPACE_BETWEEN'; row.counterAxisAlignItems = 'CENTER';
   s.appendChild(row); row.resize(440, 10); row.counterAxisSizingMode = 'AUTO'; row.x = 0; row.y = 62;
   const mk = (ic, size) => {
-    const r = figma.createAutoLayout('HORIZONTAL'); r.primaryAxisAlignItems = 'CENTER'; r.counterAxisAlignItems = 'CENTER';
+    const r = newAL('HORIZONTAL'); r.primaryAxisAlignItems = 'CENTER'; r.counterAxisAlignItems = 'CENTER';
     r.resize(44, 44); r.primaryAxisSizingMode = 'FIXED'; r.counterAxisSizingMode = 'FIXED'; r.cornerRadius = 22; r.fills = [paint('white')];
     r.appendChild(icon(ic, size, 'ink')); return r;
   };
@@ -783,7 +817,7 @@ function addBottle() {
   const s = screen('13 Add a wine bottle', 3000);
   appBar(s, L('addTitle'));
   const c = content(s, 118, { itemSpacing: 0, paddingTop: 4 });
-  const intro = AL('VERTICAL', { name: 'Intro', padding: 12 }); intro.paddingLeft = intro.paddingRight = intro.paddingTop = intro.paddingBottom = 12; intro.fills = [paint('surface')];
+  const intro = AL('VERTICAL', { name: 'Intro' }); intro.paddingLeft = intro.paddingRight = intro.paddingTop = intro.paddingBottom = 12; intro.fills = [paint('surface')];
   c.appendChild(intro); fill(intro); intro.appendChild(wrapText(T(L('addIntro'), 'Small', 'text-soft')));
   const head = text => { c.appendChild(gap(24)); c.appendChild(T(text, 'Title', 'ink', { size: 22 })); c.appendChild(gap(10)); };
   const field = (label, required, value = '', helper = '') => {
@@ -857,10 +891,10 @@ async function main() {
   board.resize(1800, 100); board.primaryAxisSizingMode = 'FIXED'; board.counterAxisSizingMode = 'AUTO';
   board.x = -2000; board.y = 120;
   page.appendChild(board);
-  await makeComponents(board);
+  makeComponents(board);
 
   SECTION = figma.createSection(); SECTION.name = 'Gustaro app — as built'; page.appendChild(SECTION);
-  const failed = [];
+  const failed = problems.map(x => 'component ' + x);
   const run = (name, fn, newRowBefore) => { if (newRowBefore) newRow(); try { fn(); } catch (e) { failed.push(name + ': ' + e.message); } };
   run('onboarding', () => { for (let i = 0; i < 4; i++) onboarding(i); }, false);
   run('home', home, true); run('explore', explore); run('wines', wines); run('more', more);
