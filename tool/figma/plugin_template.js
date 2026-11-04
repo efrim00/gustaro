@@ -16,17 +16,24 @@ const L = (key, vars = {}) => {
 const V = {}, TS = {}, C = {};
 const paint = (name, opacity) => figma.variables.setBoundVariableForPaint(
   { type: 'SOLID', color: { r: 0, g: 0, b: 0 }, ...(opacity != null ? { opacity } : {}) }, 'color', V[name]);
+// Text styles cannot be set directly in a plugin (Figma needs the async call),
+// so a text gets the style's values now and is linked to the style at the end.
+// Texts with their own size are not linked: linking would reset the size.
+const PENDING = [];
 const T = (chars, style, color = 'ink', o = {}) => {
+  const d = TS[style];
   const t = figma.createText();
-  t.textStyleId = TS[style].id;
+  t.fontName = { family: d.family, style: d.fontStyle };
+  t.fontSize = o.size || d.size;
+  t.lineHeight = o.lh ? { unit: 'PIXELS', value: o.lh } : { unit: 'PERCENT', value: d.lineHeight };
+  t.letterSpacing = { unit: 'PIXELS', value: d.letterSpacing };
   t.characters = chars;
   t.fills = [paint(color)];
-  if (o.size) t.fontSize = o.size;
-  if (o.lh) t.lineHeight = { unit: 'PIXELS', value: o.lh };
   if (o.align) t.textAlignHorizontal = o.align;
   if (o.name) t.name = o.name;
   if (o.underline) t.textDecoration = 'UNDERLINE';
   if (o.opacity != null) t.opacity = o.opacity;
+  if (!o.size && !o.lh && !o.underline) PENDING.push([t, d.id]);
   return t;
 };
 const AL = (dir, props = {}) => { const f = figma.createAutoLayout(dir); f.fills = []; f.set(props); return f; };
@@ -94,7 +101,7 @@ async function foundations() {
     s.fontSize = size;
     if (lineHeight) s.lineHeight = { unit: 'PERCENT', value: lineHeight };
     s.letterSpacing = { unit: 'PIXELS', value: letterSpacing };
-    TS[name.replace('Gustaro/', '')] = s;
+    TS[name.replace('Gustaro/', '')] = { id: s.id, family, fontStyle: style, size, lineHeight, letterSpacing };
   }
 }
 
@@ -148,7 +155,7 @@ async function makeComponents(board) {
   const [rFill, iFill] = mkRound('Style=Filled', 56, 'red', null, 'sparkle', 22);
   const roundSet = figma.combineAsVariants([rOut, rFill], board);
   roundSet.name = 'Round button';
-  const iconProp = roundSet.addComponentProperty('Icon', 'INSTANCE_SWAP', iOut.mainComponent.id);
+  const iconProp = roundSet.addComponentProperty('Icon', 'INSTANCE_SWAP', comp('icon/bell').id);
   iOut.componentPropertyReferences = { mainComponent: iconProp };
   iFill.componentPropertyReferences = { mainComponent: iconProp };
   roundSet.layoutMode = 'HORIZONTAL'; roundSet.itemSpacing = 16; roundSet.counterAxisAlignItems = 'CENTER';
@@ -273,7 +280,7 @@ async function makeComponents(board) {
   const lt = T('Row', 'Button small', 'ink'); lr.appendChild(lt); fill(lt);
   const lv = T(' ', 'Body', 'text-soft'); lv.name = 'Value'; lr.appendChild(lv);
   lr.appendChild(icon('arrow', 20));
-  li.componentPropertyReferences = { mainComponent: lr.addComponentProperty('Icon', 'INSTANCE_SWAP', li.mainComponent.id) };
+  li.componentPropertyReferences = { mainComponent: lr.addComponentProperty('Icon', 'INSTANCE_SWAP', comp('icon/globe').id) };
   lt.componentPropertyReferences = { characters: lr.addComponentProperty('Label', 'TEXT', 'Row') };
   lv.componentPropertyReferences = { characters: lr.addComponentProperty('Value', 'TEXT', ' ') };
   add(lr); C['List row'] = lr;
@@ -863,6 +870,7 @@ async function main() {
   run('terms', () => legal('14 Terms & Conditions', L('moreTerms'), DATA.terms), true);
   run('privacy', () => legal('15 Privacy Policy', L('morePrivacy'), DATA.privacy));
 
+  for (const [t, id] of PENDING) await t.setTextStyleIdAsync(id);
   const kids = SECTION.children;
   let right = 0, bottom = 0;
   for (const k of kids) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); }
