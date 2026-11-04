@@ -47,7 +47,8 @@ const newAL = dir => {
 const AL = (dir, props = {}) => { const f = newAL(dir); f.fills = []; Object.assign(f, props); return f; };
 const gap = h => { const r = figma.createFrame(); r.name = 'Spacer'; r.resize(1, h); r.fills = []; return r; };
 const fill = n => { n.layoutSizingHorizontal = 'FILL'; return n; };
-const wrapText = t => { t.layoutSizingHorizontal = 'FILL'; t.textAutoResize = 'HEIGHT'; return t; };
+// Wrapping text: add it to its auto-layout parent first, then let it fill the width.
+const addWrap = (parent, t) => { parent.appendChild(t); t.layoutSizingHorizontal = 'FILL'; t.textAutoResize = 'HEIGHT'; return t; };
 const border = (n, sides, color = 'ink', w = 1) => {
   n.strokes = [paint(color)];
   n.strokeTopWeight = sides.includes('t') ? w : 0; n.strokeBottomWeight = sides.includes('b') ? w : 0;
@@ -339,8 +340,10 @@ function makeComponents(board) {
 
 // ---------- screen helpers ----------
 let SECTION = null;
+const UNPLACED = new Set();
 const cursor = { x: 80, y: 120, rowH: 0, count: 0, perRow: 5 };
 function place(frame) {
+  UNPLACED.delete(frame);
   if (cursor.count && cursor.count % cursor.perRow === 0) { cursor.x = 80; cursor.y += cursor.rowH + 160; cursor.rowH = 0; }
   frame.x = cursor.x; frame.y = cursor.y;
   cursor.x += frame.width + 80; cursor.rowH = Math.max(cursor.rowH, frame.height); cursor.count++;
@@ -348,7 +351,7 @@ function place(frame) {
 function newRow() { if (cursor.count) { cursor.x = 80; cursor.y += cursor.rowH + 160; cursor.rowH = 0; cursor.count = 0; } }
 function screen(name, height, bg = 'white', statusColor = null) {
   const s = figma.createFrame(); s.name = name; s.resize(440, height); s.fills = [paint(bg)]; s.clipsContent = true;
-  SECTION.appendChild(s);
+  SECTION.appendChild(s); UNPLACED.add(s);
   const sb = inst('Status bar'); s.appendChild(sb); sb.x = 0; sb.y = 0;
   if (statusColor) recolor(sb, paint(statusColor));
   return s;
@@ -411,8 +414,8 @@ function onboarding(index) {
   const col = AL('VERTICAL', { name: 'Copy', itemSpacing: 12 });
   s.appendChild(col); col.resize(356, 10); col.counterAxisSizingMode = 'FIXED'; col.primaryAxisSizingMode = 'AUTO';
   if (index === 0) { col.appendChild(T('Noroc!', 'Script', 'white', { size: 54 })); col.appendChild(gap(4)); }
-  col.appendChild(wrapText(T(L(slides[index][0]), 'Title', 'white', { size: 34, lh: 39 })));
-  col.appendChild(wrapText(T(L(slides[index][1]), 'Body', 'white', { size: 17, lh: 25 })));
+  addWrap(col, T(L(slides[index][0]), 'Title', 'white', { size: 34, lh: 39 }));
+  addWrap(col, T(L(slides[index][1]), 'Body', 'white', { size: 17, lh: 25 }));
   if (last) {
     col.appendChild(gap(10));
     for (const parts of [[[L('onbAge'), false]], [[L('onbTermsPrefix'), false], [L('onbTerms'), true], [L('onbTermsAnd'), false], [L('onbPrivacy'), true], ['.', false]]]) {
@@ -461,7 +464,7 @@ function tasting(step) {
   const col = AL('VERTICAL', { name: 'Step', itemSpacing: 18 }); s.appendChild(col); col.x = 20; col.y = 196;
   col.resize(400, 10); col.counterAxisSizingMode = 'FIXED'; col.primaryAxisSizingMode = 'AUTO';
   col.appendChild(T(L('tasting' + keys[step]), 'Script', 'white', { size: 64 }));
-  col.appendChild(wrapText(T(L('tasting1' + keys[step]), 'Button', 'white', { size: 24, lh: 29 })));
+  addWrap(col, T(L('tasting1' + keys[step]), 'Button', 'white', { size: 24, lh: 29 }));
   const note = T(L('tastingResponsible'), 'Small', 'white'); s.appendChild(note); note.x = 20; note.y = 956 - 56 - 24 - 28;
   const b = button('On red', step === 4 ? L('tastingDone') : L('tastingNext')); s.appendChild(b); b.layoutSizingHorizontal = 'FIXED'; b.resize(400, 56); b.x = 20; b.y = 956 - 56 - 24;
   place(s);
@@ -501,9 +504,9 @@ function home() {
   const kick = AL('VERTICAL', { name: 'Kicker', paddingBottom: 10 }); border(kick, 'b', 'white', 2);
   hc.appendChild(kick); kick.appendChild(T(L('hero1Tag'), 'Label', 'white', { size: 15 }));
   hc.appendChild(gap(22));
-  hc.appendChild(wrapText(T(L('hero1Title'), 'Display', 'white')));
+  addWrap(hc, T(L('hero1Title'), 'Display', 'white'));
   hc.appendChild(gap(8));
-  hc.appendChild(wrapText(T(L('hero1Body'), 'Body', 'white', { size: 16 })));
+  addWrap(hc, T(L('hero1Body'), 'Body', 'white', { size: 16 }));
   const noroc = T('Noroc!', 'Script', 'white', { size: 44, name: 'Noroc' }); hero.appendChild(noroc); noroc.rotation = 8; noroc.x = 262; noroc.y = 30;
   const hb = AL('HORIZONTAL', { name: 'Buttons', itemSpacing: 22 }); hb.counterAxisAlignItems = 'CENTER'; hero.appendChild(hb); hb.x = 20; hb.y = 212;
   const start = button('On red', L('heroStart')); hb.appendChild(start); start.layoutSizingHorizontal = 'HUG'; start.resize(start.width, 44);
@@ -527,7 +530,7 @@ function home() {
   seen.appendChild(icon('close', 16));
   const names = AL('VERTICAL', { name: 'Names', itemSpacing: 2 }); info.appendChild(names); fill(names);
   names.appendChild(T('Crama Țărăncuța', 'Body', 'text-soft'));
-  names.appendChild(wrapText(T('Fetească Neagră 2020', 'Card title', 'ink', { size: 22 })));
+  addWrap(names, T('Fetească Neagră 2020', 'Card title', 'ink', { size: 22 }));
   names.appendChild(T('Red · Codru, Moldova', 'Body', 'text-muted'));
   const like = AL('VERTICAL', { name: 'Did you like it', itemSpacing: 12 }); like.paddingLeft = like.paddingRight = like.paddingTop = like.paddingBottom = 14;
   like.counterAxisAlignItems = 'CENTER'; border(like, 't'); card.appendChild(like); fill(like);
@@ -573,7 +576,7 @@ function home() {
     const bw = AL('HORIZONTAL', { name: 'Photo' }); bw.primaryAxisAlignItems = 'CENTER'; cd.appendChild(bw); fill(bw); bw.appendChild(bottleArt(96));
     const spc = figma.createFrame(); spc.name = 'Spacer'; spc.fills = []; spc.resize(10, 10); cd.appendChild(spc); spc.layoutSizingHorizontal = 'FILL'; spc.layoutGrow = 1;
     const tw = T(w, 'Small', 'text-muted'); cd.appendChild(tw); fill(tw);
-    cd.appendChild(wrapText(T(n, 'Card title', 'ink', { size: 16 })));
+    addWrap(cd, T(n, 'Card title', 'ink', { size: 16 }));
   }
   const seeAll = AL('HORIZONTAL', { name: 'See all', paddingTop: 14, paddingRight: 28 }); seeAll.primaryAxisAlignItems = 'MAX'; c.appendChild(seeAll); fill(seeAll);
   seeAll.appendChild(T(L('commonSeeAll'), 'Button small', 'red'));
@@ -603,8 +606,8 @@ function explore() {
   const bw = AL('HORIZONTAL', { name: 'Bottle' }); bw.primaryAxisAlignItems = 'CENTER'; c.appendChild(bw); fill(bw); bw.appendChild(bottleArt(170));
   c.appendChild(gap(28));
   c.appendChild(setP(inst('Tag'), { Label: L('exploreSoonTag') })); c.appendChild(gap(14));
-  c.appendChild(wrapText(T(L('exploreSoonTitle'), 'Title'))); c.appendChild(gap(8));
-  c.appendChild(wrapText(T(L('exploreSoonBody'), 'Body', 'text-muted', { size: 16 }))); c.appendChild(gap(26));
+  addWrap(c, T(L('exploreSoonTitle'), 'Title')); c.appendChild(gap(8));
+  addWrap(c, T(L('exploreSoonBody'), 'Body', 'text-muted', { size: 16 })); c.appendChild(gap(26));
   const b = button('Outline', L('exploreSoonAction')); c.appendChild(b); fill(b);
   tabBar(s, 'Explore'); place(s);
   return s;
@@ -645,7 +648,7 @@ function more() {
   av.resize(56, 56); av.primaryAxisSizingMode = 'FIXED'; av.counterAxisSizingMode = 'FIXED'; av.cornerRadius = 28; av.fills = [paint('ink')];
   guest.appendChild(av); av.appendChild(icon('person', 26, 'white'));
   const gt = AL('VERTICAL', { name: 'Text', itemSpacing: 2 }); guest.appendChild(gt); fill(gt);
-  gt.appendChild(T(L('moreGuest'), 'Card title')); gt.appendChild(wrapText(T(L('moreGuestBody'), 'Small', 'text-soft')));
+  gt.appendChild(T(L('moreGuest'), 'Card title')); addWrap(gt, T(L('moreGuestBody'), 'Small', 'text-soft'));
   c.appendChild(gap(18));
   const add = AL('HORIZONTAL', { name: L('moreAddBottle'), paddingLeft: 14, paddingRight: 16, paddingTop: 18, paddingBottom: 18, itemSpacing: 14 });
   add.counterAxisAlignItems = 'CENTER'; add.fills = [paint('red')]; c.appendChild(add); fill(add);
@@ -653,7 +656,7 @@ function more() {
   pb.resize(44, 44); pb.primaryAxisSizingMode = 'FIXED'; pb.counterAxisSizingMode = 'FIXED'; pb.fills = [paint('white')];
   add.appendChild(pb); pb.appendChild(icon('plus-large', 26));
   const at = AL('VERTICAL', { name: 'Text', itemSpacing: 2 }); add.appendChild(at); fill(at);
-  at.appendChild(T(L('moreAddBottle'), 'Button', 'white')); at.appendChild(wrapText(T(L('moreAddBottleBody'), 'Small', 'white')));
+  at.appendChild(T(L('moreAddBottle'), 'Button', 'white')); addWrap(at, T(L('moreAddBottleBody'), 'Small', 'white'));
   add.appendChild(icon('arrow', 20, 'white'));
   c.appendChild(gap(8));
   for (const [ic, key, value] of [['glass', 'moreMyBottles', ''], ['cocktail', 'moreTastingGuide', ''], ['globe', 'moreLanguage', L('languageEnglish')],
@@ -665,7 +668,7 @@ function more() {
   del.resize(del.width, 60); del.layoutSizingVertical = 'FIXED'; border(del, 'b', 'line');
   del.appendChild(icon('trash', 22, 'red')); del.appendChild(T(L('moreClearData'), 'Button small', 'red'));
   c.appendChild(gap(24));
-  c.appendChild(wrapText(T(L('moreResponsible'), 'Small', 'text-soft', { align: 'CENTER' })));
+  addWrap(c, T(L('moreResponsible'), 'Small', 'text-soft', { align: 'CENTER' }));
   tabBar(s, 'More'); place(s);
   return s;
 }
@@ -680,11 +683,11 @@ function wine() {
   const tagRow = AL('HORIZONTAL', { name: 'Source' }); tagRow.primaryAxisAlignItems = 'CENTER'; c.appendChild(tagRow); fill(tagRow);
   tagRow.appendChild(setP(inst('Tag'), { Label: L('wineVerified') }));
   c.appendChild(gap(14));
-  c.appendChild(wrapText(T('Crama Țărăncuța', 'Body', 'text-soft', { align: 'CENTER' })));
+  addWrap(c, T('Crama Țărăncuța', 'Body', 'text-soft', { align: 'CENTER' }));
   c.appendChild(gap(2));
-  c.appendChild(wrapText(T('Fetească Neagră 2020', 'Title', 'ink', { size: 28, lh: 34, align: 'CENTER' })));
+  addWrap(c, T('Fetească Neagră 2020', 'Title', 'ink', { size: 28, lh: 34, align: 'CENTER' }));
   c.appendChild(gap(4));
-  c.appendChild(wrapText(T('Red · Codru, Moldova', 'Body', 'text-muted', { align: 'CENTER' })));
+  addWrap(c, T('Red · Codru, Moldova', 'Body', 'text-muted', { align: 'CENTER' }));
   c.appendChild(gap(18)); band(c); c.appendChild(gap(24));
   const section = (heading, build) => { const t = T(heading, 'Card title'); c.appendChild(t); c.appendChild(gap(10)); build(); c.appendChild(gap(24)); };
   section(L('wineSpecs'), () => {
@@ -694,15 +697,15 @@ function wine() {
     }
   });
   section(L('wineGrapes'), () => c.appendChild(T('Fetească Neagră', 'Body')));
-  section(L('wineSensory'), () => c.appendChild(wrapText(T('Sour cherry, dried plum.', 'Body'))));
+  section(L('wineSensory'), () => addWrap(c, T('Sour cherry, dried plum.', 'Body')));
   section(L('winePairings'), () => {
     const row = AL('HORIZONTAL', { name: 'Pairings', itemSpacing: 8 }); c.appendChild(row);
     for (const p of ['Lamb', 'Aged cheese']) { const ch = setP(variant('Chip', 'Selected=No'), { Label: p }); row.appendChild(ch); ch.resize(ch.width, 40); }
   });
-  section(L('wineAbout'), () => c.appendChild(wrapText(T('Vin roșu sec.', 'Body'))));
+  section(L('wineAbout'), () => addWrap(c, T('Vin roșu sec.', 'Body')));
   const rule = figma.createRectangle(); rule.name = 'Divider'; rule.resize(400, 1); rule.fills = [paint('line')]; c.appendChild(rule); fill(rule);
   c.appendChild(gap(14));
-  c.appendChild(wrapText(T(L('wineSourceVerified'), 'Small', 'text-muted')));
+  addWrap(c, T(L('wineSourceVerified'), 'Small', 'text-muted'));
   c.appendChild(gap(40));
   finish(s, c, 118, 0); place(s);
   return s;
@@ -713,8 +716,8 @@ function miss() {
   const c = AL('VERTICAL', { name: 'Message', itemSpacing: 12, paddingLeft: 20, paddingRight: 20 }); c.counterAxisAlignItems = 'CENTER';
   s.appendChild(c); c.resize(440, 10); c.counterAxisSizingMode = 'FIXED'; c.primaryAxisSizingMode = 'AUTO';
   c.appendChild(bottleArt(150)); c.appendChild(gap(18));
-  c.appendChild(wrapText(T(L('missTitle'), 'Title', 'ink', { align: 'CENTER' })));
-  c.appendChild(wrapText(T(L('missBodyBarcode'), 'Body', 'text-muted', { align: 'CENTER', size: 16 })));
+  addWrap(c, T(L('missTitle'), 'Title', 'ink', { align: 'CENTER' }));
+  addWrap(c, T(L('missBodyBarcode'), 'Body', 'text-muted', { align: 'CENTER', size: 16 }));
   c.appendChild(T(L('missCode', { code: '4849999999999' }), 'Small', 'text-muted'));
   c.x = 0; c.y = 380;
   bottomBar(s, bar => {
@@ -733,7 +736,7 @@ function myBottles() {
   s.appendChild(c); c.resize(440, 10); c.counterAxisSizingMode = 'FIXED'; c.primaryAxisSizingMode = 'AUTO';
   c.appendChild(bottleArt(110)); c.appendChild(gap(10));
   c.appendChild(T(L('myBottlesEmptyTitle'), 'Card title'));
-  c.appendChild(wrapText(T(L('myBottlesEmptyBody'), 'Body', 'text-muted', { align: 'CENTER', size: 16 })));
+  addWrap(c, T(L('myBottlesEmptyBody'), 'Body', 'text-muted', { align: 'CENTER', size: 16 }));
   c.x = 0; c.y = 400;
   bottomBar(s, bar => { const b = button('Primary', L('moreAddBottle')); bar.appendChild(b); fill(b); });
   place(s);
@@ -747,9 +750,9 @@ function about() {
   const lw = AL('HORIZONTAL', { name: 'Logo' }); lw.primaryAxisAlignItems = 'CENTER'; c.appendChild(lw); fill(lw);
   const logo = icon('logo/dark'); logo.resize(200, 60); lw.appendChild(logo);
   c.appendChild(gap(8));
-  c.appendChild(wrapText(T(L('moreVersion', { version: '1.0.0' }), 'Body', 'text-muted', { align: 'CENTER' })));
+  addWrap(c, T(L('moreVersion', { version: '1.0.0' }), 'Body', 'text-muted', { align: 'CENTER' }));
   c.appendChild(gap(14)); band(c); c.appendChild(gap(16));
-  c.appendChild(wrapText(T(L('aboutBody'), 'Body', 'ink', { size: 16 })));
+  addWrap(c, T(L('aboutBody'), 'Body', 'ink', { size: 16 }));
   c.appendChild(gap(20));
   const b = button('Outline', L('aboutLicenses')); c.appendChild(b); fill(b);
   place(s);
@@ -789,8 +792,8 @@ function scanNoCamera() {
   const s = screen('11 Scan · no camera', 956, 'ink', 'white');
   const c = AL('VERTICAL', { name: 'Message', itemSpacing: 8, paddingLeft: 32, paddingRight: 32 }); c.counterAxisAlignItems = 'CENTER';
   s.appendChild(c); c.resize(440, 10); c.counterAxisSizingMode = 'FIXED'; c.primaryAxisSizingMode = 'AUTO';
-  c.appendChild(wrapText(T(L('scanNoCameraTitle'), 'Title', 'white', { align: 'CENTER' })));
-  c.appendChild(wrapText(T(L('scanNoCameraBody'), 'Body', 'white', { align: 'CENTER' }))); c.appendChild(gap(12));
+  addWrap(c, T(L('scanNoCameraTitle'), 'Title', 'white', { align: 'CENTER' }));
+  addWrap(c, T(L('scanNoCameraBody'), 'Body', 'white', { align: 'CENTER' })); c.appendChild(gap(12));
   const b = button('On red', L('scanChoosePhoto')); c.appendChild(b); fill(b);
   c.x = 0; c.y = 340;
   place(s); return s;
@@ -804,7 +807,7 @@ function scanManual() {
   const hd = AL('HORIZONTAL', { name: 'Handle' }); hd.primaryAxisAlignItems = 'CENTER'; sheet.appendChild(hd); fill(hd);
   const h = figma.createRectangle(); h.resize(32, 4); h.cornerRadius = 2; h.fills = [paint('line')]; hd.appendChild(h);
   sheet.appendChild(gap(6));
-  sheet.appendChild(T(L('scanManualTitle'), 'Title')); sheet.appendChild(wrapText(T(L('scanManualBody'), 'Body', 'text-muted'))); sheet.appendChild(gap(8));
+  sheet.appendChild(T(L('scanManualTitle'), 'Title')); addWrap(sheet, T(L('scanManualBody'), 'Body', 'text-muted')); sheet.appendChild(gap(8));
   const f = setP(inst('Field'), { Label: L('addBarcode'), Value: '4841000000029' }); sheet.appendChild(f); fill(f);
   sheet.appendChild(gap(6));
   const b = button('Primary', L('scanManualAction')); sheet.appendChild(b); fill(b);
@@ -818,7 +821,7 @@ function addBottle() {
   appBar(s, L('addTitle'));
   const c = content(s, 118, { itemSpacing: 0, paddingTop: 4 });
   const intro = AL('VERTICAL', { name: 'Intro' }); intro.paddingLeft = intro.paddingRight = intro.paddingTop = intro.paddingBottom = 12; intro.fills = [paint('surface')];
-  c.appendChild(intro); fill(intro); intro.appendChild(wrapText(T(L('addIntro'), 'Small', 'text-soft')));
+  c.appendChild(intro); fill(intro); addWrap(intro, T(L('addIntro'), 'Small', 'text-soft'));
   const head = text => { c.appendChild(gap(24)); c.appendChild(T(text, 'Title', 'ink', { size: 22 })); c.appendChild(gap(10)); };
   const field = (label, required, value = '', helper = '') => {
     const f = setP(inst('Field'), { Label: required ? label + ' *' : label, Value: value || ' ' });
@@ -831,7 +834,7 @@ function addBottle() {
     c.appendChild(gap(14));
   };
   head(L('addSectionPhoto'));
-  c.appendChild(wrapText(T(L('addPhotoHelp'), 'Small', 'text-soft'))); c.appendChild(gap(10));
+  addWrap(c, T(L('addPhotoHelp'), 'Small', 'text-soft')); c.appendChild(gap(10));
   const pr = AL('HORIZONTAL', { name: 'Photo buttons', itemSpacing: 8 }); c.appendChild(pr); fill(pr);
   for (const l of [L('addPhotoTake'), L('addPhotoChoose')]) { const b = button('Outline', l); pr.appendChild(b); fill(b); b.resize(b.width, 48); b.layoutSizingVertical = 'FIXED'; }
   head(L('addSectionBarcode'));
@@ -867,10 +870,10 @@ function legal(name, titleText, md) {
   for (const raw of md.split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('# ')) continue;
-    if (line.startsWith('## ')) { c.appendChild(gap(18)); c.appendChild(wrapText(T(line.slice(3), 'Card title'))); c.appendChild(gap(6)); continue; }
+    if (line.startsWith('## ')) { c.appendChild(gap(18)); addWrap(c, T(line.slice(3), 'Card title')); c.appendChild(gap(6)); continue; }
     const bullet = line.startsWith('- ');
     const t = T((bullet ? '•  ' : '') + line.replace(/\*\*/g, ''), 'Body', 'ink', { lh: 22 });
-    c.appendChild(wrapText(t)); c.appendChild(gap(8));
+    addWrap(c, t); c.appendChild(gap(8));
   }
   c.appendChild(gap(40));
   finish(s, c, 118, 0); place(s);
@@ -895,7 +898,14 @@ async function main() {
 
   SECTION = figma.createSection(); SECTION.name = 'Gustaro app — as built'; page.appendChild(SECTION);
   const failed = problems.map(x => 'component ' + x);
-  const run = (name, fn, newRowBefore) => { if (newRowBefore) newRow(); try { fn(); } catch (e) { failed.push(name + ': ' + e.message); } };
+  const run = (name, fn, newRowBefore) => {
+    if (newRowBefore) newRow();
+    try { fn(); } catch (e) {
+      failed.push(name + ': ' + e.message);
+      // keep what was drawn, in its own spot, so it is not piled on the others
+      for (const f of [...UNPLACED]) { f.name += ' (incomplete)'; place(f); }
+    }
+  };
   run('onboarding', () => { for (let i = 0; i < 4; i++) onboarding(i); }, false);
   run('home', home, true); run('explore', explore); run('wines', wines); run('more', more);
   run('wine', wine, true); run('miss', miss); run('scan', scan); run('scanNoCamera', scanNoCamera); run('scanManual', scanManual);
@@ -910,7 +920,13 @@ async function main() {
   for (const k of kids) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); }
   SECTION.resizeWithoutConstraints(right + 80, bottom + 120);
   SECTION.x = 0; SECTION.y = 0;
+  const report = figma.createText();
+  report.name = 'Build report'; report.fontName = { family: 'Onest', style: 'Regular' }; report.fontSize = 18;
+  report.characters = (failed.length ? 'Problems (' + failed.length + '):\n' + failed.join('\n') : 'No problems.') + '\n\nScreens: ' + kids.length;
+  report.fills = [paint('ink')];
+  report.textAutoResize = 'HEIGHT'; report.resize(900, report.height);
+  page.appendChild(report); report.x = -2000; report.y = -400;
   figma.viewport.scrollAndZoomIntoView([SECTION]);
-  return failed.length ? 'Built with problems: ' + failed.join(' | ') : 'Done: ' + kids.length + ' screens and the components are in "' + PAGE_NAME + '".';
+  return failed.length ? failed.length + ' problem(s): see the "Build report" text above the components.' : 'Done: ' + kids.length + ' screens and the components are in "' + PAGE_NAME + '".';
 }
 main().then(msg => figma.closePlugin(msg)).catch(e => figma.closePlugin('Failed: ' + e.message));
